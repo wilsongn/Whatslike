@@ -4,6 +4,12 @@
     <ProjectReference Include="..\Chat.Shared\Chat.Shared.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Page Update="Views\InputDialog.xaml">
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+  </ItemGroup>
+
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net8.0-windows</TargetFramework>

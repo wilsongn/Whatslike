@@ -1,6 +1,39 @@
 ﻿<Application x:Class="Chat.Client.Wpf.App"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:models="clr-namespace:Chat.Client.Wpf.Models"
+             xmlns:local="clr-namespace:Chat.Client.Wpf"
              StartupUri="MainWindow.xaml">
-    <Application.Resources/>
+    <Application.Resources>
+        <local:BoolToBrush x:Key="BoolToBrush"/>
+        <local:BoolToAlignment x:Key="BoolToAlignment"/>
+        <local:BoolToVisibility x:Key="BoolToVisibility"/>
+
+        <Style x:Key="BubbleStyle" TargetType="Border">
+            <Setter Property="CornerRadius" Value="12"/>
+            <Setter Property="Padding" Value="8"/>
+            <Setter Property="Margin" Value="6"/>
+        </Style>
+
+        <DataTemplate DataType="{x:Type models:MessageItem}">
+            <DockPanel LastChildFill="False">
+                <Border Style="{StaticResource BubbleStyle}"
+            MaxWidth="600"                  
+                    Background="{Binding IsMine, Converter={StaticResource BoolToBrush}}"
+            HorizontalAlignment="{Binding IsMine, Converter={StaticResource BoolToAlignment}}">
+                    <StackPanel>
+                        <TextBlock Text="{Binding From}" FontWeight="Bold" Opacity="0.6"/>
+                        <TextBlock Text="{Binding Text}" TextWrapping="Wrap"
+           TextAlignment="{Binding IsMine, Converter={StaticResource BoolToAlignment}}"/>
+
+                        <TextBlock Text="{Binding FileName}"
+                   Visibility="{Binding IsFile, Converter={StaticResource BoolToVisibility}}"/>
+                        <TextBlock Text="{Binding Timestamp, StringFormat=t}"
+                   HorizontalAlignment="Right" Opacity="0.6"/>
+                    </StackPanel>
+                </Border>
+            </DockPanel>
+        </DataTemplate>
+
+    </Application.Resources>
 </Application>
