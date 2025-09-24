@@ -1,4 +1,5 @@
-﻿using System.Text.Json;
+﻿using Chat.Shared.Protocol;
+using System.Text.Json;
 
 namespace Chat.Shared.Net
 {
@@ -26,5 +27,13 @@ namespace Chat.Shared.Net
             Chat.Shared.Protocol.MessageType type,
             string? from, string? to, T payload) =>
             new(type, from, to, JsonMessageSerializer.Serialize(payload));
+
+
+        public static Envelope Ack(string note, string? to = null) =>
+            Make(MessageType.Ack, "server", to, new AckMessage("ok", note));
+
+        public static Envelope Error(string code, string message, string? to = null) =>
+            Make(MessageType.Error, "server", to, new ErrorMessage(code, message));
+
     }
 }

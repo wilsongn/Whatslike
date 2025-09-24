@@ -15,6 +15,8 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Chat.Tests.Unit", "Chat.Tes
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Chat.Tests.Integration", "Chat.Tests.Integration\Chat.Tests.Integration.csproj", "{3A6196D1-314F-4D33-9C6C-17CF1D91282D}"
 EndProject
+Project("{54435603-DBB4-11D2-8724-00A0C9A8B90C}") = "Chat.Client.Setup", "SetupChatClient\SetupChatClient.vdproj", "{62CA0E76-3907-4659-A5EB-6EBAA7E2147F}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -45,6 +47,8 @@ Global
 		{3A6196D1-314F-4D33-9C6C-17CF1D91282D}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{3A6196D1-314F-4D33-9C6C-17CF1D91282D}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{3A6196D1-314F-4D33-9C6C-17CF1D91282D}.Release|Any CPU.Build.0 = Release|Any CPU
+		{62CA0E76-3907-4659-A5EB-6EBAA7E2147F}.Debug|Any CPU.ActiveCfg = Debug
+		{62CA0E76-3907-4659-A5EB-6EBAA7E2147F}.Release|Any CPU.ActiveCfg = Release
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

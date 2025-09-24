@@ -1,124 +1,74 @@
-﻿using System.Net;
-using System.Net.Sockets;
-using System.Text;
+﻿using System;
 using System.Text.Json;
-using Chat.Shared.Net;
+using StackExchange.Redis;
+using Chat.Server.Distributed;
 using Chat.Shared.Protocol;
-using Chat.Server.Hub;
 
 namespace Chat.Server;
 
 internal static class Program
 {
-    private static Socket? _listener;
-
     public static async Task Main(string[] args)
     {
-        int port = (args.Length > 0 && int.TryParse(args[0], out var p)) ? p : 5000;
+        var port = int.TryParse(Environment.GetEnvironmentVariable("PORT"), out var p) ? p : 5000;
+        var nodeId = Environment.GetEnvironmentVariable("NODE_ID") ?? Environment.MachineName;
+        var redisUrl = Environment.GetEnvironmentVariable("REDIS_URL") ?? "localhost:6379";
+        var heartbeatSec = int.TryParse(Environment.GetEnvironmentVariable("HEARTBEAT_SEC"), out var hb) ? hb : 30;
+        var idleTimeoutSec = int.TryParse(Environment.GetEnvironmentVariable("IDLE_TIMEOUT_SEC"), out var it) ? it : 90;
 
-        _listener = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
-        _listener.Bind(new IPEndPoint(IPAddress.Any, port));
-        _listener.Listen(backlog: 512);
-        Console.WriteLine($"[Server] Escutando em 0.0.0.0:{port}");
+        Console.WriteLine($"[Server] NodeId={nodeId} Port={port} Redis={redisUrl}");
 
-        var sessions = new SessionManager();
-        var groups = new GroupManager();
-        var router = new Router(sessions, groups);
+        var mux = await ConnectionMultiplexer.ConnectAsync(redisUrl);
+        var presence = new RedisPresenceStore(mux);
+        var groups = new RedisGroupStore(mux);
+        var bus = new RedisBus(mux, nodeId);
 
-        Console.CancelKeyPress += (_, __) => { try { _listener?.Close(); } catch { } };
+        var table = new ConnectionTable(
+            nodeId: nodeId,
+            presence: presence,
+            groups: groups,
+            bus: bus,
+            presenceTtl: TimeSpan.FromSeconds(idleTimeoutSec)
+        );
 
-        _ = Task.Run(() => AcceptLoopAsync(_listener!, router, sessions));
+        var verbose = (Environment.GetEnvironmentVariable("DEMO_VERBOSE") ?? "true")
+              .Equals("true", StringComparison.OrdinalIgnoreCase);
 
-        Console.WriteLine("[Server] Pressione Ctrl+C para encerrar.");
-        await Task.Delay(-1);
-    }
-
-    private static async Task AcceptLoopAsync(Socket listener, Router router, SessionManager sessions)
-    {
-        while (true)
+        if (verbose)
         {
-            Socket? sock = null;
+            _ = Task.Run(async () =>
+            {
+                while (true)
+                {
+                    Console.WriteLine("[Stats] " + Metrics.Snapshot(table));
+                    await Task.Delay(5000);
+                }
+            });
+        }
+
+
+
+        bus.Subscribe(async json =>
+        {
             try
             {
-                sock = await listener.AcceptAsync();
-                _ = Task.Run(() => HandleClientAsync(sock, router, sessions));
+                var routed = Routed.Deserialize(json);
+                if (routed is null || !string.Equals(routed.TargetNode, nodeId, StringComparison.OrdinalIgnoreCase)) return;
+                if (verbose) Console.WriteLine($"[Bus][recv] from={routed.OriginNode} targets={(routed.Targets?.Length.ToString() ?? "-")}");
+
+                var env = JsonSerializer.Deserialize<Envelope>(routed.EnvelopeJson);
+                if (env is null) return;
+                await table.DeliverFromBusAsync(env, routed.Targets);
             }
-            catch (ObjectDisposedException) { break; }
             catch (Exception ex)
             {
-                Console.WriteLine($"[Server] erro em Accept: {ex.Message}");
-                sock?.Dispose();
+                Console.WriteLine($"[Bus] erro ao processar mensagem roteada: {ex.Message}");
             }
-        }
-    }
+        });
 
-    private static async Task HandleClientAsync(Socket socket, Router router, SessionManager sessions)
-    {
-        ClientSession? session = null;
 
-        try
-        {
-            // 1) Primeira mensagem deve ser AUTH
-            var first = await SocketFraming.ReadFrameAsync(socket);
-            if (first is null) { socket.Dispose(); return; }
 
-            var env = JsonSerializer.Deserialize<Envelope>(Encoding.UTF8.GetString(first));
-            if (env is null || env.Type != MessageType.Auth)
-            {
-                await SendErrorAsync(socket, "AUTH_REQUIRED", "Primeira mensagem deve ser AUTH");
-                socket.Dispose(); return;
-            }
-
-            var auth = JsonMessageSerializer.Deserialize<AuthRequest>(env.Payload);
-            if (auth is null || string.IsNullOrWhiteSpace(auth.Username))
-            {
-                await SendErrorAsync(socket, "INVALID_AUTH", "Username inválido");
-                socket.Dispose(); return;
-            }
-
-            if (!sessions.TryAdd(auth.Username, socket))
-            {
-                await SendErrorAsync(socket, "USERNAME_TAKEN", "Usuário já conectado");
-                socket.Dispose(); return;
-            }
-
-            session = sessions.Get(auth.Username)!;
-            Console.WriteLine($"[Server] {auth.Username} conectado.");
-
-            await session.SendAsync(ProtocolUtil.Make(MessageType.Ack, "server", auth.Username, new AckMessage("login", "ok")));
-
-            // 2) Loop de mensagens do cliente
-            while (true)
-            {
-                var frame = await SocketFraming.ReadFrameAsync(socket);
-                if (frame is null) break;
-
-                var envelope = JsonSerializer.Deserialize<Envelope>(Encoding.UTF8.GetString(frame));
-                if (envelope is null) continue;
-
-                await router.HandleAsync(session, envelope);
-            }
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"[Server] erro: {ex.Message}");
-        }
-        finally
-        {
-            if (session is not null)
-            {
-                sessions.Remove(session.Username);
-                Console.WriteLine($"[Server] {session.Username} saiu.");
-            }
-            try { socket.Shutdown(SocketShutdown.Both); } catch { }
-            socket.Dispose();
-        }
-    }
-
-    private static async Task SendErrorAsync(Socket socket, string code, string message)
-    {
-        var env = ProtocolUtil.Make(MessageType.Error, "server", null, new ErrorMessage(code, message));
-        var json = JsonSerializer.Serialize(env);
-        await SocketFraming.SendFrameAsync(socket, Encoding.UTF8.GetBytes(json));
+        var server = new SocketServer(port, table, heartbeatSec, idleTimeoutSec);
+        await server.StartAsync();
     }
 }

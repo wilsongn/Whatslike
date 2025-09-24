@@ -183,7 +183,6 @@ internal static class Program
         await SocketFraming.SendFrameAsync(_socket, bytes);
     }
 
-    // ========= RECEBIMENTO =========
 
     private static async Task ReceiveLoopAsync(CancellationToken ct)
     {

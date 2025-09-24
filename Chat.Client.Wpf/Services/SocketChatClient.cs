@@ -12,6 +12,7 @@ public sealed class SocketChatClient : ISocketChatClient
     private Socket? _socket;
     private string? _username;
     private CancellationTokenSource? _cts;
+    private System.Timers.Timer? _hb;
 
     private readonly Dictionary<string, FileRecvState> _recv = new();
     private readonly string _downloadsDir = Path.Combine(
@@ -37,6 +38,15 @@ public sealed class SocketChatClient : ISocketChatClient
 
         _cts = new CancellationTokenSource();
         _ = Task.Run(() => ReceiveLoopAsync(_cts.Token));
+
+        _hb = new System.Timers.Timer(30_000);
+        _hb.Elapsed += async (_, __) =>
+        {
+            var env = ProtocolUtil.Make(MessageType.Ping, null, null, new Ping());
+            await SendEnv(env);
+        };
+        _hb.AutoReset = true;
+        _hb.Start();
     }
 
     public Task SendPrivateTextAsync(string toUser, string text) =>
