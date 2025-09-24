@@ -21,6 +21,9 @@ docker ps
 
 # Verificar logs do Redis
 docker logs redis --tail 20
+
+net localgroup docker-users $env:USERNAME /add
+docker run -p 6379:6379 redis:7
 ```
 
 ```powershell
