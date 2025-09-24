@@ -11,20 +11,32 @@
 | `DEMO_VERBOSE`     | `true`/`false`                     |           `true` | Mostra logs de roteamento + snapshot `[Stats]`.                                    |
 
 
+```bash
 # 1) Certifique-se de que o Docker Desktop está "Docker is running"
 docker pull redis:7
 docker run --name redis -p 6379:6379 -d redis:7
 
-# Verificar
+# Verificar containers em execução
 docker ps
-docker logs redis --tail 20
 
+# Verificar logs do Redis
+docker logs redis --tail 20
+```
+
+```powershell
+# Variáveis de ambiente
 $env:REDIS_URL = "localhost:6379"
-$env:NODE_ID   = "A"
-$env:PING_LOG  = "true"
+$env:NODE_ID = "A"
+$env:PING_LOG = "true"
 $env:DEMO_VERBOSE = "true"
+
 # Usando porta da env:
 $env:PORT = "5000"
 dotnet run --project Chat.Server
+
 # OU passando a porta como argumento (sobrescreve PORT):
 dotnet run --project Chat.Server -- 5000
+```
+
+
+
