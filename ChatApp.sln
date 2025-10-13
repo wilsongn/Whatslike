@@ -22,6 +22,11 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Itens de Solução", "Itens
 		prometheus.yml = prometheus.yml
 	EndProjectSection
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tools", "tools", "{81EC379C-02DC-41D3-94B4-D48FA1DAF639}"
+	ProjectSection(SolutionItems) = preProject
+		DevToken.csx = DevToken.csx
+	EndProjectSection
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -57,5 +62,8 @@ Global
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {9A13CB3F-8A50-4C3A-BD0F-F16514F46593}
 	EndGlobalSection
 EndGlobal

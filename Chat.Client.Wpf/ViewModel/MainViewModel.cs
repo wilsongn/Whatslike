@@ -18,6 +18,8 @@ public sealed class MainViewModel : ObservableObject
     private readonly ISocketChatClient _chat;
     private readonly IDialogService _dialog;
 
+    private string? _jwtToken;
+
     // --- gRPC publisher ---
     private GrpcPublisher? _grpc;
     private int _grpcPort = 6000;                     // porta padrão do serviço gRPC no servidor
@@ -43,6 +45,8 @@ public sealed class MainViewModel : ObservableObject
         _chat.OnInfo += msg => UI(() => Info = msg);
         _chat.OnError += msg => UI(() => Info = msg);
 
+        _jwtToken = "eJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ3aWxzb24iLCJuYW1lIjoid2lsc29uIiwibmJmIjoxNzYwMzM4NDExLCJleHAiOjE3NjAzNDU2MTEsImlzcyI6ImNoYXQtZGV2IiwiYXVkIjoiY2hhdC1hcGkifQ.fRA3Tz6dc6Kw3mV6sqDl1caYQnc4gn_BgMfRFYPap3Q";
+
         ConnectCommand = new RelayCommand(async _ =>
         {
             try
@@ -56,7 +60,9 @@ public sealed class MainViewModel : ObservableObject
                 }
 
                 // cria um novo publisher gRPC
-                _grpc = new GrpcPublisher($"https://{Host}:{GrpcPort}");
+                _grpc = new GrpcPublisher($"https://localhost:{GrpcPort}", () => _jwtToken);
+                // se quiser usar outro host, gere um cert com SAN ou mantenha o handler “Dangerous” como acima (apenas dev).
+
 
                 Info = $"Conectado como {Username} em {Host}:{Port} (gRPC em {GrpcPort})";
             }

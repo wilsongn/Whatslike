@@ -10,6 +10,9 @@ using Prometheus;
 using Chat.Grpc;
 using Chat.Server.Grpc;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.IdentityModel.Tokens;
+using System.Text;
 
 namespace Chat.Server;
 
@@ -78,6 +81,47 @@ internal static class Program
         // === gRPC + Prometheus (INSERIR AQUI, antes do SocketServer) ===
         var builder = WebApplication.CreateBuilder(new WebApplicationOptions { Args = Array.Empty<string>() });
 
+        builder.Services
+        .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+        .AddJwtBearer(options =>
+        {
+            var issuer = Environment.GetEnvironmentVariable("JWT_ISSUER") ?? "chat-dev";
+            var audience = Environment.GetEnvironmentVariable("JWT_AUDIENCE") ?? "chat-api";
+            var secret = Environment.GetEnvironmentVariable("JWT_SECRET") ?? "26c8d9a793975af4999bc048990f6fd1";
+
+            // DEV (HS256). Em produção, troque para Authority (OIDC) — ver nota abaixo.
+            if (!string.IsNullOrWhiteSpace(secret))
+            {
+                options.TokenValidationParameters = new TokenValidationParameters
+                {
+                    ValidateIssuer = true,
+                    ValidIssuer = issuer,
+
+                    ValidateAudience = true,
+                    ValidAudience = audience,
+
+                    ValidateIssuerSigningKey = true,
+                    IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(secret)),
+
+                    ValidateLifetime = true,
+                    ClockSkew = TimeSpan.FromSeconds(30)
+                };
+            }
+
+            // (Opcional) ler token de "access_token" na query para testes com grpcurl
+            options.Events = new JwtBearerEvents
+            {
+                OnMessageReceived = ctx =>
+                {
+                    var token = ctx.Request.Query["access_token"];
+                    if (!string.IsNullOrEmpty(token))
+                        ctx.Token = token;
+                    return Task.CompletedTask;
+                }
+            };
+        });
+
+        builder.Services.AddAuthorization();
         builder.Services.AddGrpc();
         builder.Services.AddGrpcReflection();
 
@@ -102,12 +146,20 @@ internal static class Program
             });
         });
 
+        
+
         var app = builder.Build();
+
+        app.UseAuthentication();
+        app.UseAuthorization();
+
+        app.MapGrpcService<Chat.Server.Grpc.ChatGrpcService>()
+            .RequireAuthorization();
 
         // métricas http (/metrics) + endpoints gRPC
         app.UseHttpMetrics();
         app.MapMetrics();
-        app.MapGrpcService<Chat.Server.Grpc.ChatGrpcService>();
+
         app.MapGrpcReflectionService();
         app.MapGet("/", () => "Chat gRPC is up");
 
