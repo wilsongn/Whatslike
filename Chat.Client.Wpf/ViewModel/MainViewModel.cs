@@ -8,6 +8,9 @@ using Chat.Client.Wpf.Models;
 using Chat.Client.Wpf.Services;
 using Microsoft.Win32;
 
+// + gRPC types (stubs gerados do .proto)
+using Chat.Grpc;
+
 namespace Chat.Client.Wpf.ViewModels;
 
 public sealed class MainViewModel : ObservableObject
@@ -15,12 +18,18 @@ public sealed class MainViewModel : ObservableObject
     private readonly ISocketChatClient _chat;
     private readonly IDialogService _dialog;
 
+    // --- gRPC publisher ---
+    private GrpcPublisher? _grpc;
+    private int _grpcPort = 6000;                     // porta padrão do serviço gRPC no servidor
+    public int GrpcPort { get => _grpcPort; set => SetProperty(ref _grpcPort, value); }
+
     private static void UI(Action a)
     {
         var d = Application.Current?.Dispatcher;
         if (d is null || d.CheckAccess()) a();
         else d.BeginInvoke(a);
     }
+
     public MainViewModel(ISocketChatClient chat, IDialogService dialog)
     {
         _chat = chat;
@@ -39,10 +48,21 @@ public sealed class MainViewModel : ObservableObject
             try
             {
                 await _chat.ConnectAsync(Host, Port, Username);
-                Info = $"Conectado como {Username} em {Host}:{Port}";
+
+                // encerra o publisher gRPC anterior, se existir
+                if (_grpc is not null)
+                {
+                    try { await _grpc.DisposeAsync(); } catch { }
+                }
+
+                // cria um novo publisher gRPC
+                _grpc = new GrpcPublisher($"https://{Host}:{GrpcPort}");
+
+                Info = $"Conectado como {Username} em {Host}:{Port} (gRPC em {GrpcPort})";
             }
             catch (Exception ex) { Info = "[Erro] " + ex.Message; }
         });
+
 
         SendCommand = new RelayCommand(async _ => await SendAsync(), _ => Selected is not null && !string.IsNullOrWhiteSpace(Compose));
         AttachCommand = new RelayCommand(async _ => await AttachAsync(), _ => Selected is not null);
@@ -60,26 +80,23 @@ public sealed class MainViewModel : ObservableObject
         {
             var name = _dialog.Prompt("Novo grupo", "Nome do grupo:");
             if (string.IsNullOrWhiteSpace(name)) return;
-            await _chat.CreateGroupAsync(name);
+            await _chat.CreateGroupAsync(name); // continua via socket
             var conv = EnsureConversation(ConversationType.Group, name);
             Selected = conv;
             Info = $"Grupo {name} criado.";
         });
         AddMemberToGroupCommand = new RelayCommand(async param =>
         {
-            // param vem do item do ListBox quando chamado pelo menu de contexto;
-            // se vier null (botão do header), usa o grupo selecionado.
             var conv = param as Conversation ?? Selected;
             if (conv is null || conv.Type != ConversationType.Group)
             {
                 Info = "Selecione um grupo para adicionar membros.";
                 return;
             }
-
             var member = _dialog.Prompt("Adicionar membro", $"Usuário para adicionar em '{conv.Id}':");
             if (string.IsNullOrWhiteSpace(member)) return;
 
-            await _chat.AddToGroupAsync(conv.Id, member);
+            await _chat.AddToGroupAsync(conv.Id, member); // continua via socket
             Info = $"Usuário '{member}' adicionado ao grupo '{conv.Id}'.";
         });
     }
@@ -113,7 +130,6 @@ public sealed class MainViewModel : ObservableObject
             if (SetProperty(ref _selected, value) && value is not null)
                 value.Unread = 0;
 
-            // Força atualização de CanExecute dos botões
             (SendCommand as RelayCommand)?.RaiseCanExecuteChanged();
             (AttachCommand as RelayCommand)?.RaiseCanExecuteChanged();
         }
@@ -157,11 +173,6 @@ public sealed class MainViewModel : ObservableObject
         }
     }
 
-
-
-    // helper para disparar PropertyChanged manualmente
-    //protected void OnPropertyChanged(string name) => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
-
     // --- Composer / grupos ---
     private string _compose = "";
     public string Compose
@@ -191,7 +202,7 @@ public sealed class MainViewModel : ObservableObject
     public ICommand SendCommand { get; }
     public ICommand AttachCommand { get; }
 
-    // --- Handlers ---
+    // --- Handlers (recebimento via socket permanece igual) ---
     private void HandlePrivate(string from, string text)
     {
         var c = EnsureConversation(ConversationType.Direct, from);
@@ -208,7 +219,6 @@ public sealed class MainViewModel : ObservableObject
 
     private void HandleFileSaved(FileSavedArgs e)
     {
-        // target pode ser user ou group (igual ao Selected.Id)
         var type = Groups.Any(g => g.Id == e.Target) ? ConversationType.Group : ConversationType.Direct;
         var c = EnsureConversation(type, type == ConversationType.Group ? e.Target : e.From);
         var isActive = Selected == c;
@@ -222,7 +232,6 @@ public sealed class MainViewModel : ObservableObject
             FilePath = e.Path,
             FileName = e.FileName,
             FileSize = e.TotalBytes,
-            // IsImage = IsImagePath(e.Path)        // se você tiver mantido o detector de imagem
         }, isActive);
     }
 
@@ -244,12 +253,37 @@ public sealed class MainViewModel : ObservableObject
         var text = Compose;
         Compose = string.Empty;
 
-        if (Selected.Type == ConversationType.Direct)
-            await _chat.SendPrivateTextAsync(Selected.Id, text);
-        else
-            await _chat.SendGroupTextAsync(Selected.Id, text);
+        bool sent = false;
 
-        Selected.Add(new MessageItem { From = Username, Text = text, IsMine = true }, isActive: true);
+        try
+        {
+            if (_grpc is not null)
+            {
+                if (Selected.Type == ConversationType.Direct)
+                    sent = await _grpc.PublishPrivateAsync(Username, Selected.Id, text);
+                else
+                    sent = await _grpc.PublishGroupAsync(Username, Selected.Id, text);
+            }
+
+            // Fallback: se gRPC falhar/não estiver pronto, usa socket antigo
+            if (!sent)
+            {
+                if (Selected.Type == ConversationType.Direct)
+                    await _chat.SendPrivateTextAsync(Selected.Id, text);
+                else
+                    await _chat.SendGroupTextAsync(Selected.Id, text);
+                sent = true;
+            }
+        }
+        catch (Exception ex)
+        {
+            Info = "[Envio] falhou: " + ex.Message;
+        }
+
+        if (sent)
+        {
+            Selected.Add(new MessageItem { From = Username, Text = text, IsMine = true }, isActive: true);
+        }
     }
 
     private async Task AttachAsync()
@@ -261,7 +295,7 @@ public sealed class MainViewModel : ObservableObject
             var dlg = new OpenFileDialog { Title = "Selecione o arquivo", CheckFileExists = true };
             if (dlg.ShowDialog() == true)
             {
-                await _chat.SendFileAsync(Selected.Id, dlg.FileName);
+                await _chat.SendFileAsync(Selected.Id, dlg.FileName); // envio de arquivo continua via socket
                 Selected.Add(new MessageItem
                 {
                     From = Username,
@@ -271,7 +305,6 @@ public sealed class MainViewModel : ObservableObject
                     FilePath = dlg.FileName,
                     FileName = Path.GetFileName(dlg.FileName),
                 }, isActive: true);
-
             }
             else
             {
@@ -283,6 +316,4 @@ public sealed class MainViewModel : ObservableObject
             Info = "[Arquivo] Falha ao enviar: " + ex.Message;
         }
     }
-
-
 }

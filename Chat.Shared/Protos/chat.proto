@@ -1,0 +1,25 @@
+syntax = "proto3";
+package chat.v1;
+option csharp_namespace = "Chat.Grpc";
+
+message PublishPrivateRequest {
+  string from = 1;
+  string to   = 2;
+  string text = 3;
+}
+
+message PublishGroupRequest {
+  string from  = 1;
+  string group = 2;
+  string text  = 3;
+}
+
+message PublishAck {
+  string status = 1;  // "ok" / "error"
+  string detail = 2;  // mensagem de erro, se houver
+}
+
+service ChatService {
+  rpc PublishPrivate (PublishPrivateRequest) returns (PublishAck);
+  rpc PublishToGroup (PublishGroupRequest)  returns (PublishAck);
+}

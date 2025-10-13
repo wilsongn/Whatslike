@@ -4,6 +4,9 @@ using System.Text.Json;
 using System.Threading.Channels;
 using Chat.Shared.Net;
 using Chat.Shared.Protocol;
+using Chat.Server.Telemetry;
+using Prometheus; // <- para usar Telemetry.*
+
 
 namespace Chat.Server;
 
@@ -42,11 +45,15 @@ public sealed class ClientConn
 
     public void Start()
     {
+        Chat.Server.Telemetry.Telemetry.SocketSessionsOpened.Inc();   // [METRICS]
+        Chat.Server.Telemetry.Telemetry.ActiveSessions.Inc();         // [METRICS]
+
         _ = Task.Run(ReceiveLoopAsync);
         _ = Task.Run(SendLoopAsync);
         _ = Task.Run(AuthWatchdogAsync);
         _ = Task.Run(PresencePumperAsync);
     }
+
 
     public async Task SendAsync(Envelope env)
     {
@@ -62,8 +69,13 @@ public sealed class ClientConn
         try { _socket.Shutdown(SocketShutdown.Both); } catch { }
         try { _socket.Dispose(); } catch { }
         _table.Unregister(this);
+
+        Chat.Server.Telemetry.Telemetry.SocketSessionsClosed.Inc();   // [METRICS]
+        Chat.Server.Telemetry.Telemetry.ActiveSessions.Dec();         // [METRICS]
+
         Console.WriteLine($"[Conn] {Username ?? Id.ToString()} closed: {reason}");
     }
+
 
     private async Task SendLoopAsync()
     {
@@ -71,6 +83,8 @@ public sealed class ClientConn
         {
             await foreach (var env in _sendQ.Reader.ReadAllAsync(_cts.Token))
             {
+                Chat.Server.Telemetry.Telemetry.MessagesOut.WithLabels(env.Type.ToString()).Inc();  // [METRICS]
+
                 var json = JsonSerializer.Serialize(env);
                 await SocketFraming.SendFrameAsync(_socket, Encoding.UTF8.GetBytes(json));
             }
@@ -91,6 +105,8 @@ public sealed class ClientConn
 
                 var env = JsonSerializer.Deserialize<Envelope>(Encoding.UTF8.GetString(frame));
                 if (env is null) continue;
+
+                Chat.Server.Telemetry.Telemetry.MessagesIn.WithLabels(env.Type.ToString()).Inc();   // [METRICS]
 
                 await HandleAsync(env);
             }
@@ -133,11 +149,13 @@ public sealed class ClientConn
                 break;
 
             case MessageType.PrivateMsg:
-                await _table.DeliverPrivateAsync(env);
+                using (Chat.Server.Telemetry.Telemetry.DeliveryLatency.WithLabels("private").NewTimer()) // [METRICS]
+                    await _table.DeliverPrivateAsync(env);
                 break;
 
             case MessageType.GroupMsg:
-                await _table.DeliverGroupAsync(env, env.To!);
+                using (Chat.Server.Telemetry.Telemetry.DeliveryLatency.WithLabels("group").NewTimer())   // [METRICS]
+                    await _table.DeliverGroupAsync(env, env.To!);
                 break;
 
             case MessageType.CreateGroup:
@@ -164,6 +182,7 @@ public sealed class ClientConn
 
             case MessageType.FileChunk:
                 Interlocked.Increment(ref Metrics.FileChunksForwarded);
+                Chat.Server.Telemetry.Telemetry.FileChunks.Inc();                             // [METRICS]
                 // sua lógica: privado OU grupo (conforme env.To)
                 await _table.DeliverPrivateAsync(env); // ou DeliverGroupAsync se To == grupo
                 break;
