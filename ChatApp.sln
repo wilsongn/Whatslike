@@ -27,6 +27,10 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tools", "tools", "{81EC379C
 		DevToken.csx = DevToken.csx
 	EndProjectSection
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Chat.Api", "Chat.Api\Chat.Api.csproj", "{17021EC5-1053-4512-9B25-FC3606EA0955}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Chat.Persistence", "Chat.Persistence\Chat.Persistence.csproj", "{4A18E960-AC67-4329-B14C-DE9FA2AFA022}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -59,6 +63,14 @@ Global
 		{3A6196D1-314F-4D33-9C6C-17CF1D91282D}.Release|Any CPU.Build.0 = Release|Any CPU
 		{62CA0E76-3907-4659-A5EB-6EBAA7E2147F}.Debug|Any CPU.ActiveCfg = Debug
 		{62CA0E76-3907-4659-A5EB-6EBAA7E2147F}.Release|Any CPU.ActiveCfg = Release
+		{17021EC5-1053-4512-9B25-FC3606EA0955}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{17021EC5-1053-4512-9B25-FC3606EA0955}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{17021EC5-1053-4512-9B25-FC3606EA0955}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{17021EC5-1053-4512-9B25-FC3606EA0955}.Release|Any CPU.Build.0 = Release|Any CPU
+		{4A18E960-AC67-4329-B14C-DE9FA2AFA022}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{4A18E960-AC67-4329-B14C-DE9FA2AFA022}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{4A18E960-AC67-4329-B14C-DE9FA2AFA022}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{4A18E960-AC67-4329-B14C-DE9FA2AFA022}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
