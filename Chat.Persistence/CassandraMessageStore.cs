@@ -81,4 +81,15 @@ public sealed class CassandraMessageStore : IMessageStore
         }
         return list;
     }
+
+    public async Task UpdateMessageStatusAsync(Guid org, Guid conv, int bucket, long seq, string status)
+    {
+        var stmt = new SimpleStatement(
+            "UPDATE mensagens SET status=?, status_ts[?]=toTimestamp(now()) " +
+            "WHERE organizacao_id=? AND conversa_id=? AND bucket=? AND sequencia=?",
+            status, status, org, conv, bucket, seq
+        );
+        await _s.ExecuteAsync(stmt).ConfigureAwait(false);
+    }
+
 }

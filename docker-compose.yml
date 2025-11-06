@@ -1,0 +1,109 @@
+services:
+  cassandra:
+    image: cassandra:5
+    container_name: cassandra
+    environment:
+      - CASSANDRA_CLUSTER_NAME=chatops
+      - CASSANDRA_DC=datacenter1
+      - CASSANDRA_RACK=rack1
+      - HEAP_NEWSIZE=256M
+      - MAX_HEAP_SIZE=1G
+    ports:
+      - "9042:9042"
+    healthcheck:
+      test: ["CMD-SHELL","cqlsh -e \"SELECT cluster_name FROM system.local;\" || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.6.1
+    container_name: zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+      ZOOKEEPER_4LW_COMMANDS_WHITELIST: "ruok,stat,conf,mntr"
+    ports:
+      - "2181:2181"
+    healthcheck:
+      test: ["CMD-SHELL","echo 'ls /' | zookeeper-shell localhost:2181 | grep -E '^\\[.*\\]$' >/dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+
+
+  kafka:
+    image: confluentinc/cp-kafka:7.6.1
+    container_name: kafka
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    ports:
+      - "9092:9092"
+    healthcheck:
+      test: ["CMD-SHELL","kafka-topics --bootstrap-server localhost:9092 --list >/dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+
+  chat_api:
+    build:
+      context: .
+      dockerfile: Chat.Api/Dockerfile
+    container_name: chat_api
+    depends_on:
+      cassandra:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    environment:
+      Jwt__Issuer: Whatslike
+      Jwt__Audience: Whatslike.Clients
+      Jwt__Key: dev-super-secret-key-change
+      Jwt__DisableLifetimeValidation: "true"
+      Cassandra__ContactPoints: cassandra
+      Cassandra__Port: "9042"
+      Cassandra__DataCenter: datacenter1
+      Cassandra__Keyspace: chatops
+      Cassandra__ReplicationClass: SimpleStrategy
+      Cassandra__ReplicationFactor: "1"
+      Cassandra__BucketStrategy: Month
+      Kafka__BootstrapServers: kafka:9092
+      Kafka__TopicMessages: messages
+      Kafka__ClientId: chat-api
+    ports:
+      - "8080:8080"
+
+  router_worker:
+    build:
+      context: .
+      dockerfile: Chat.RouterWorker/Dockerfile
+    container_name: router_worker
+    depends_on:
+      cassandra:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    environment:
+      Cassandra__ContactPoints: cassandra
+      Cassandra__Port: "9042"
+      Cassandra__DataCenter: datacenter1
+      Cassandra__Keyspace: chatops
+      Cassandra__ReplicationClass: SimpleStrategy
+      Cassandra__ReplicationFactor: "1"
+      Cassandra__BucketStrategy: Month
+      Kafka__BootstrapServers: kafka:9092
+      Kafka__TopicMessages: messages
+      Kafka__GroupId: router-worker
+      Kafka__Partitions: "6"
+      Kafka__ReplicationFactor: "1"

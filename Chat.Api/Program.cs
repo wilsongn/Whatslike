@@ -1,4 +1,5 @@
 using System.Text;
+using Chat.Api.Messaging;
 using Chat.Persistence;
 using Chat.Persistence.Abstractions;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -48,7 +49,8 @@ builder.Services
     });
 
 builder.Services.AddAuthorization();
-
+builder.Services.AddKafkaProducer(builder.Configuration);
+builder.Services.AddSingleton<IMessagePublisher, MessagePublisher>();
 
 
 builder.Services.AddCassandraPersistence(builder.Configuration);
