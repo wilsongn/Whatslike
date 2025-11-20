@@ -1,11 +1,11 @@
-﻿using System.Security.Claims;
-using System.Text.Json;
-using Chat.Api.Contracts;
+﻿using Chat.Api.Contracts;
 using Chat.Api.Messaging;
 using Chat.Persistence.Abstractions;
 using Chat.Persistence.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using System.Security.Claims;
+using System.Text.Json;
 
 namespace Chat.Api.Controllers;
 
@@ -17,37 +17,65 @@ public class MessagesController : ControllerBase
     private readonly ILogger<MessagesController> _logger;
     private readonly IMessagePublisher _publisher;
     private readonly IMessageStore _store; // manteremos para GET e (se quiser) modo híbrido
+    private readonly IFileMetadataRepository _fileMetadataRepository;
 
-    public MessagesController(IMessageStore store, IMessagePublisher publisher, ILogger<MessagesController> logger)
-    { _store = store; _publisher = publisher; _logger = logger; }
+    public MessagesController(IMessageStore store, IMessagePublisher publisher, ILogger<MessagesController> logger, IFileMetadataRepository fileMetadataRepository)
+    { _store = store; _publisher = publisher; _logger = logger; _fileMetadataRepository = fileMetadataRepository; }
 
-    [HttpPost("messages")]
-    public async Task<IActionResult> SendMessage([FromBody] SendMessageRequest req)
+    // Chat.Api/Controllers/MessagesController.cs
+    [HttpPost("v1/messages")]
+    public async Task<IActionResult> EnviarMensagem(
+    [FromBody] SendMessageRequest request,
+    CancellationToken ct)
     {
-        var tenantStr = User.FindFirst("tenant_id")?.Value;
-        if (!Guid.TryParse(tenantStr, out var organizacaoId))
-            return Unauthorized(new { error = new { code = "unauthorized", message = "tenant_id ausente no token" } });
+        // Validação básica por tipo
+        switch (request.Tipo)
+        {
+            case "text":
+                {
+                    var conteudo = request.Conteudo.Deserialize<ConteudoTexto>();
 
-        if (req.ConversaId == Guid.Empty || req.UsuarioRemetenteId == Guid.Empty)
-            return BadRequest(new { error = new { code = "bad_request", message = "ConversaId e UsuarioRemetenteId são obrigatórios" } });
+                    if (conteudo == null || string.IsNullOrWhiteSpace(conteudo.Texto))
+                        return BadRequest("Conteúdo de texto vazio.");
 
-        var criado = req.CriadoEm ?? DateTimeOffset.UtcNow;
-        var mensagemId = Guid.NewGuid();
+                    // aqui você monta a entidade Message de texto
+                    // inclui conteudo.Texto no payload, publica em Kafka etc.
+                    break;
+                }
 
-        var evt = new MessageProducedEvent(
-            OrganizacaoId: organizacaoId,
-            ConversaId: req.ConversaId,
-            MensagemId: mensagemId,
-            UsuarioRemetenteId: req.UsuarioRemetenteId,
-            Direcao: string.IsNullOrWhiteSpace(req.Direcao) ? "outbound" : req.Direcao!,
-            ConteudoJson: System.Text.Json.JsonSerializer.Serialize(req.Conteudo),
-            CriadoEm: criado
-        );
+            case "file":
+                {
+                    var conteudo = request.Conteudo.Deserialize<ConteudoArquivo>();
 
-        await _publisher.PublishAsync(evt);
+                    if (conteudo == null)
+                        return BadRequest("Conteúdo de arquivo inválido.");
 
-        return Accepted(new { mensagemId, conversaId = req.ConversaId });
+                    // 1) valida se o arquivo existe na tabela de metadados
+                    var meta = await _fileMetadataRepository
+                        .GetByIdAsync(conteudo.ArquivoId, ct);
+
+                    if (meta is null)
+                        return BadRequest("arquivoId inválido.");
+
+                    if (meta.ConversaId != request.ConversaId)
+                        return BadRequest("arquivoId não pertence a essa conversa.");
+
+                    // 2) monta a Message do tipo "file"
+                    //    salva no storage de mensagens e publica no Kafka,
+                    //    incluindo o ArquivoId (ou o próprio ConteudoArquivo) no payload
+
+                    break;
+                }
+
+            default:
+                return BadRequest($"Tipo de mensagem inválido: {request.Tipo}");
+        }
+
+        // retorno que você já utiliza hoje
+        return Accepted();
     }
+
+
 
     // GET /v1/conversations/{conversaId}/messages?bucket=yyyymm&fromSeq=&limit=50
     [HttpGet("conversations/{conversaId:guid}/messages")]

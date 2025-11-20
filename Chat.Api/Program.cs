@@ -1,10 +1,12 @@
-using System.Text;
+using Chat.Api.Infrastructure.Storage;
 using Chat.Api.Messaging;
 using Chat.Persistence;
 using Chat.Persistence.Abstractions;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
+using Minio;
+using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -50,11 +52,13 @@ builder.Services
 
 builder.Services.AddAuthorization();
 builder.Services.AddKafkaProducer(builder.Configuration);
-builder.Services.AddSingleton<IMessagePublisher, MessagePublisher>();
+// Chat.Api/Program.cs
+builder.Services.AddSingleton<IMessagePublisher>(_ =>
+    new KafkaMessagePublisher(Environment.GetEnvironmentVariable("KAFKA_BOOTSTRAP") ?? "localhost:9092"));
+
 
 
 builder.Services.AddCassandraPersistence(builder.Configuration);
-builder.Services.AddAuthorization();
 builder.Services.AddControllers();
 
 // Swagger + Bearer
@@ -78,6 +82,21 @@ builder.Services.AddSwaggerGen(c =>
         [securityScheme] = Array.Empty<string>()
     });
 });
+
+builder.Services.AddSingleton(sp =>
+{
+    var configuration = sp.GetRequiredService<IConfiguration>();
+    var section = configuration.GetSection("Minio");
+
+    return new MinioClient()
+        .WithEndpoint(section["Endpoint"])
+        .WithCredentials(section["AccessKey"], section["SecretKey"])
+        .WithSSL(bool.Parse(section["UseSSL"] ?? "false"))
+        .Build();
+});
+
+builder.Services.AddScoped<IObjectStorageService, MinioObjectStorageService>();
+builder.Services.AddSingleton<IFileMetadataRepository, CassandraFileMetadataRepository>();
 
 var app = builder.Build();
 

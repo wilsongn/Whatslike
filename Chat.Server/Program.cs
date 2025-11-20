@@ -13,6 +13,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
+using Microsoft.AspNetCore.Http;
 
 namespace Chat.Server;
 
@@ -151,6 +152,12 @@ internal static class Program
         var app = builder.Build();
 
         app.UseAuthentication();
+        app.MapPost("/v1/callbacks/status", (StatusEvent e) =>
+        {
+            Console.WriteLine($"[STATUS] {e.channel} {e.message_id} -> {e.status} @ {e.timestamp:O}");
+            // aqui você pode: persistir no Mongo, publicar em Kafka, notificar cliente, etc.
+            return Results.Accepted();
+        });
         app.UseAuthorization();
 
         app.MapGrpcService<Chat.Server.Grpc.ChatGrpcService>()
@@ -171,4 +178,5 @@ internal static class Program
         var server = new SocketServer(port, table, heartbeatSec, idleTimeoutSec);
         await server.StartAsync();
     }
+    public record StatusEvent(string message_id, string channel, string status, DateTime timestamp);
 }

@@ -6,6 +6,7 @@ public sealed record MessageProducedEvent(
     Guid MensagemId,
     Guid UsuarioRemetenteId,
     string Direcao,
+    string Canal,
     string ConteudoJson,
     DateTimeOffset CriadoEm
 );

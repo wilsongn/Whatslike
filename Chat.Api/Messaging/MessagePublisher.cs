@@ -9,28 +9,60 @@ public interface IMessagePublisher
     Task PublishAsync(MessageProducedEvent evt, CancellationToken ct = default);
 }
 
-public sealed class MessagePublisher : IMessagePublisher
+public sealed class KafkaMessagePublisher : IMessagePublisher, IDisposable
 {
     private readonly IProducer<string, string> _producer;
-    private readonly KafkaOptions _opt;
-    public MessagePublisher(IProducer<string, string> producer, IOptions<KafkaOptions> opt)
+    private static readonly HashSet<string> AllowedChannels =
+        new(StringComparer.OrdinalIgnoreCase) { "whatsapp", "instagram" };
+
+    public KafkaMessagePublisher(string bootstrapServers)
     {
-        _producer = producer; _opt = opt.Value;
+        var cfg = new ProducerConfig
+        {
+            BootstrapServers = bootstrapServers,
+            EnableIdempotence = true,
+            SecurityProtocol = SecurityProtocol.Plaintext
+        };
+        _producer = new ProducerBuilder<string, string>(cfg).Build();
     }
 
     public async Task PublishAsync(MessageProducedEvent evt, CancellationToken ct = default)
     {
-        var key = evt.ConversaId.ToString(); // ordenação por conversa
-        var val = JsonSerializer.Serialize(evt);
-        var msg = new Message<string, string>
+        if (string.IsNullOrWhiteSpace(evt.Canal))
+            throw new ArgumentException("Canal obrigatório.", nameof(evt));
+
+        var channel = evt.Canal.Trim().ToLowerInvariant();
+        if (!AllowedChannels.Contains(channel))
+            throw new ArgumentException($"Canal inválido: {evt.Canal}.", nameof(evt));
+
+        var topic = $"msg.out.{channel}";
+        var json = JsonSerializer.Serialize(new
+        {
+            message_id = evt.MensagemId,
+            channel = channel,
+            to = (string?)null,           // se aplicar no seu domínio
+            text = (string?)null,         // idem — o seu Frontend pode montar aqui
+            file_id = (string?)null,      // se houver anexo
+            conversation_id = evt.ConversaId.ToString(),
+            tenant_id = evt.OrganizacaoId.ToString(),
+            from_user_id = evt.UsuarioRemetenteId.ToString(),
+            direction = evt.Direcao,
+            payload = evt.ConteudoJson,
+            timestamp = evt.CriadoEm
+        });
+
+        // chave: conversa (para manter ordenação por partição no mesmo canal)
+        var key = evt.ConversaId.ToString();
+
+        var dr = await _producer.ProduceAsync(topic, new Message<string, string>
         {
             Key = key,
-            Value = val,
-            Headers = new Headers {
-            new Header("tenant_id", System.Text.Encoding.UTF8.GetBytes(evt.OrganizacaoId.ToString()))
-        }
-        };
-        var dr = await _producer.ProduceAsync(_opt.TopicMessages, msg, ct);
-        // opcional: log do offset: dr.TopicPartitionOffset
+            Value = json
+        }, ct);
+
+        // opcional: log/local metrics
+        // Console.WriteLine($"[Kafka] {topic}@{dr.Partition}:{dr.Offset} key={key}");
     }
+
+    public void Dispose() => _producer.Dispose();
 }
