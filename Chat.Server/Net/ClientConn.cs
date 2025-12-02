@@ -1,4 +1,4 @@
-﻿using System.Net.Sockets;
+using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
 using System.Threading.Channels;
@@ -15,6 +15,7 @@ public sealed class ClientConn
     public Guid Id { get; } = Guid.NewGuid();
     public string? Username { get; set; }
     public DateTime LastSeenUtc { get; private set; } = DateTime.UtcNow;
+    private int _closed = 0;
 
     private readonly Socket _socket;
     private readonly Channel<Envelope> _sendQ;
@@ -65,13 +66,21 @@ public sealed class ClientConn
 
     public void Close(string reason)
     {
+        // A MÁGICA: Se _closed já era 1, retorna e não faz nada.
+        // Se era 0, vira 1 e continua. Isso garante execução única.
+        if (Interlocked.Exchange(ref _closed, 1) == 1) 
+        {
+            return; 
+        }
+
         try { _cts.Cancel(); } catch { }
         try { _socket.Shutdown(SocketShutdown.Both); } catch { }
         try { _socket.Dispose(); } catch { }
         _table.Unregister(this);
 
-        Chat.Server.Telemetry.Telemetry.SocketSessionsClosed.Inc();   // [METRICS]
-        Chat.Server.Telemetry.Telemetry.ActiveSessions.Dec();         // [METRICS]
+        // Agora isso só roda uma vez por usuário!
+        Chat.Server.Telemetry.Telemetry.SocketSessionsClosed.Inc();
+        Chat.Server.Telemetry.Telemetry.ActiveSessions.Dec();
 
         Console.WriteLine($"[Conn] {Username ?? Id.ToString()} closed: {reason}");
     }
@@ -214,7 +223,7 @@ public sealed class ClientConn
             if (Username != null)
             {
                 var idle = DateTime.UtcNow - LastSeenUtc;
-                if (idle > TimeSpan.FromSeconds(90))
+                if (idle > TimeSpan.FromSeconds(300))
                 {
                     Close("IdleTimeout");
                     return;
