@@ -1,4 +1,4 @@
-﻿namespace Chat.Api.Messaging;
+namespace Chat.Api.Messaging;
 
 public sealed record MessageProducedEvent(
     Guid OrganizacaoId,
@@ -9,4 +9,11 @@ public sealed record MessageProducedEvent(
     string Canal,
     string ConteudoJson,
     DateTimeOffset CriadoEm
+);
+
+public sealed record MessageReadEvent(
+    Guid OrganizacaoId,
+    Guid ConversaId,
+    Guid LeitorId,
+    DateTimeOffset LidoEm
 );
