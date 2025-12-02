@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Text.Json;
 using StackExchange.Redis;
 using Chat.Server.Distributed;
@@ -14,6 +14,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
 using Microsoft.AspNetCore.Http;
+using Confluent.Kafka;
 
 namespace Chat.Server;
 
@@ -36,13 +37,24 @@ internal static class Program
         var groups = new RedisGroupStore(mux);
         var bus = new RedisBus(mux, nodeId);
 
-        // --- Tabela de conexões (roteamento local + entre nós)
+        var producerConfig = new ProducerConfig
+        {
+            BootstrapServers = "localhost:9092",
+            ClientId = "chat-server-offline",
+            Acks = Acks.All,
+            EnableIdempotence = true
+        };
+        var kafkaProducer = new ProducerBuilder<string, string>(producerConfig).Build();
+        // ========================================================
+
+        // --- Tabela de conexões (ATUALIZADO COM KAFKA)
         var table = new ConnectionTable(
             nodeId: nodeId,
             presence: presence,
             groups: groups,
             bus: bus,
-            presenceTtl: TimeSpan.FromSeconds(idleTimeoutSec)
+            presenceTtl: TimeSpan.FromSeconds(idleTimeoutSec),
+            kafkaProducer: kafkaProducer // <--- INJEÇÃO NOVA
         );
 
         var verbose = (Environment.GetEnvironmentVariable("DEMO_VERBOSE") ?? "true")
@@ -86,8 +98,8 @@ internal static class Program
         .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         .AddJwtBearer(options =>
         {
-            var issuer = Environment.GetEnvironmentVariable("JWT_ISSUER") ?? "chat-dev";
-            var audience = Environment.GetEnvironmentVariable("JWT_AUDIENCE") ?? "chat-api";
+            var issuer = Environment.GetEnvironmentVariable("JWT_ISSUER") ?? "Whatslike";
+            var audience = Environment.GetEnvironmentVariable("JWT_AUDIENCE") ?? "Whatslike.Clients";
             var secret = Environment.GetEnvironmentVariable("JWT_SECRET") ?? "26c8d9a793975af4999bc048990f6fd1";
 
             // DEV (HS256). Em produção, troque para Authority (OIDC) — ver nota abaixo.
@@ -138,12 +150,15 @@ internal static class Program
 
         builder.WebHost.ConfigureKestrel(k =>
         {
+            // 1. Porta Principal (gRPC/Chat) - Mantém HTTPS e HTTP/2
             k.ListenAnyIP(grpcPort, o =>
             {
-                o.UseHttps();                         // <- TLS (usa dev cert no dev)
-                o.Protocols = HttpProtocols.Http2;    // só HTTP/2 (recomendado)
-                                                      // Se quiser compatibilidade com clientes HTTP/1.1, use:
-                                                      // o.Protocols = HttpProtocols.Http1AndHttp2;
+                o.UseHttps();
+                o.Protocols = HttpProtocols.Http1AndHttp2; // Aceita gRPC e HTTP normal
+            });
+            k.ListenAnyIP(metricsPort, o =>
+            {
+                o.Protocols = HttpProtocols.Http1;
             });
         });
 
@@ -155,7 +170,6 @@ internal static class Program
         app.MapPost("/v1/callbacks/status", (StatusEvent e) =>
         {
             Console.WriteLine($"[STATUS] {e.channel} {e.message_id} -> {e.status} @ {e.timestamp:O}");
-            // aqui você pode: persistir no Mongo, publicar em Kafka, notificar cliente, etc.
             return Results.Accepted();
         });
         app.UseAuthorization();
@@ -174,7 +188,6 @@ internal static class Program
         Console.WriteLine($"[gRPC] Escutando em 0.0.0.0:{grpcPort}");
         // === fim do bloco gRPC ===
 
-        // --- Servidor de sockets (TCP) continua como estava
         var server = new SocketServer(port, table, heartbeatSec, idleTimeoutSec);
         await server.StartAsync();
     }
