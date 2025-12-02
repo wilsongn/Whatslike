@@ -1,4 +1,4 @@
-﻿using Chat.Api.Contracts;
+using Chat.Api.Contracts;
 using Chat.Api.Messaging;
 using Chat.Persistence.Abstractions;
 using Chat.Persistence.Models;
@@ -113,5 +113,32 @@ public class MessagesController : ControllerBase
             count = result.Count
             // futuro: incluir paging_state se adotarmos paginação do driver
         });
+    }
+
+    [HttpPost("conversations/{conversaId:guid}/read")]
+    public async Task<IActionResult> MarkAsRead([FromRoute] Guid conversaId)
+    {
+        // 1. Identifica o usuário
+        var userIdStr = User.FindFirst(ClaimTypes.NameIdentifier)?.Value; 
+        if (!Guid.TryParse(userIdStr, out var userId)) 
+             // Fallback para dev se claim não for GUID
+             userId = Guid.NewGuid(); 
+
+        var tenantStr = User.FindFirst("tenant_id")?.Value;
+        if (!Guid.TryParse(tenantStr, out var orgId)) orgId = Guid.Empty;
+
+        // 2. Cria evento de leitura
+        var evt = new MessageProducedEvent( // Reusando o record existente ou criando um novo genérico
+            orgId, conversaId, Guid.Empty, userId, "read-receipt", "internal", "{}", DateTimeOffset.UtcNow
+        );
+        
+        // *Hack*: O MessagePublisher atual espera MessageProducedEvent. 
+        // Vamos adaptar ou mandar JSON puro. Para simplificar, mandamos para um tópico "reads".
+        // Mas como seu Worker só ouve "messages", vamos usar o mesmo tópico com um payload especial.
+        
+        // Publica no Kafka (reusando publisher existente)
+        await _publisher.PublishAsync(evt);
+
+        return Ok();
     }
 }
