@@ -1,4 +1,4 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 using Confluent.Kafka;
 using Chat.Persistence.Abstractions;
 using Chat.Persistence.Models;
@@ -85,11 +85,13 @@ public sealed class RouterWorkerService : BackgroundService
                 var val = cr.Message.Value;
 
                 MessageProducedEvent? evt = JsonSerializer.Deserialize<MessageProducedEvent>(val);
-                if (evt == null)
+                if (evt.Direcao == "read-receipt")
                 {
-                    _log.LogWarning("Mensagem inválida no Kafka offset {Offset}", cr.Offset);
+                    _log.LogInformation("[READ] Usuário {User} leu conversa {Conv}", evt.UsuarioRemetenteId, evt.ConversaId);
+                    
+                    
                     consumer.Commit(cr);
-                    continue;
+                    continue; 
                 }
 
                 // persist
