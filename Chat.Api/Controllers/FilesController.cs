@@ -1,4 +1,4 @@
-﻿namespace Chat.Api.Controllers
+namespace Chat.Api.Controllers
 {
     using Chat.Api.Contracts;
     using Chat.Api.Infrastructure.Storage;
