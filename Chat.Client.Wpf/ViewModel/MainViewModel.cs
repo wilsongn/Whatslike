@@ -1,4 +1,4 @@
-﻿using System.Collections.ObjectModel;
+using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.IO;
 using System.Windows;
@@ -7,9 +7,17 @@ using Chat.Client.Wpf.Infrastructure;
 using Chat.Client.Wpf.Models;
 using Chat.Client.Wpf.Services;
 using Microsoft.Win32;
-
-// + gRPC types (stubs gerados do .proto)
 using Chat.Grpc;
+
+// --- USINGS NECESSÁRIOS PARA AS CORREÇÕES ---
+using System.Net.Http;
+using System.Net.Http.Headers;
+using System.Text.Json;
+using System.Security.Cryptography;
+using System.Text;
+using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
+using Microsoft.IdentityModel.Tokens;
 
 namespace Chat.Client.Wpf.ViewModels;
 
@@ -22,7 +30,7 @@ public sealed class MainViewModel : ObservableObject
 
     // --- gRPC publisher ---
     private GrpcPublisher? _grpc;
-    private int _grpcPort = 6000;                     // porta padrão do serviço gRPC no servidor
+    private int _grpcPort = 6000;
     public int GrpcPort { get => _grpcPort; set => SetProperty(ref _grpcPort, value); }
 
     private static void UI(Action a)
@@ -45,34 +53,33 @@ public sealed class MainViewModel : ObservableObject
         _chat.OnInfo += msg => UI(() => Info = msg);
         _chat.OnError += msg => UI(() => Info = msg);
 
-        _jwtToken = "eJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ3aWxzb24iLCJuYW1lIjoid2lsc29uIiwibmJmIjoxNzYwMzM4NDExLCJleHAiOjE3NjAzNDU2MTEsImlzcyI6ImNoYXQtZGV2IiwiYXVkIjoiY2hhdC1hcGkifQ.fRA3Tz6dc6Kw3mV6sqDl1caYQnc4gn_BgMfRFYPap3Q";
-
         ConnectCommand = new RelayCommand(async _ =>
         {
             try
             {
+                if (string.IsNullOrWhiteSpace(Username)) 
+                {
+                    Info = "Digite um usuário.";
+                    return;
+                }
+                
+                // Gera o token automaticamente
+                _jwtToken = GenerateDevToken(Username); 
+
                 await _chat.ConnectAsync(Host, Port, Username);
 
-                // encerra o publisher gRPC anterior, se existir
-                if (_grpc is not null)
-                {
-                    try { await _grpc.DisposeAsync(); } catch { }
-                }
-
-                // cria um novo publisher gRPC
+                if (_grpc is not null) { try { await _grpc.DisposeAsync(); } catch { } }
                 _grpc = new GrpcPublisher($"https://localhost:{GrpcPort}", () => _jwtToken);
-                // se quiser usar outro host, gere um cert com SAN ou mantenha o handler “Dangerous” como acima (apenas dev).
 
-
-                Info = $"Conectado como {Username} em {Host}:{Port} (gRPC em {GrpcPort})";
+                Info = $"Conectado como {Username} em {Host}:{Port} (gRPC ativo)";
             }
             catch (Exception ex) { Info = "[Erro] " + ex.Message; }
         });
 
-
         SendCommand = new RelayCommand(async _ => await SendAsync(), _ => Selected is not null && !string.IsNullOrWhiteSpace(Compose));
         AttachCommand = new RelayCommand(async _ => await AttachAsync(), _ => Selected is not null);
         ListUsersCommand = new RelayCommand(async _ => await _chat.ListUsersAsync());
+        
         NewDirectCommand = new RelayCommand(_ =>
         {
             var user = _dialog.Prompt("Nova conversa privada", "Username do usuário:");
@@ -86,11 +93,12 @@ public sealed class MainViewModel : ObservableObject
         {
             var name = _dialog.Prompt("Novo grupo", "Nome do grupo:");
             if (string.IsNullOrWhiteSpace(name)) return;
-            await _chat.CreateGroupAsync(name); // continua via socket
+            await _chat.CreateGroupAsync(name);
             var conv = EnsureConversation(ConversationType.Group, name);
             Selected = conv;
             Info = $"Grupo {name} criado.";
         });
+
         AddMemberToGroupCommand = new RelayCommand(async param =>
         {
             var conv = param as Conversation ?? Selected;
@@ -102,12 +110,12 @@ public sealed class MainViewModel : ObservableObject
             var member = _dialog.Prompt("Adicionar membro", $"Usuário para adicionar em '{conv.Id}':");
             if (string.IsNullOrWhiteSpace(member)) return;
 
-            await _chat.AddToGroupAsync(conv.Id, member); // continua via socket
+            await _chat.AddToGroupAsync(conv.Id, member);
             Info = $"Usuário '{member}' adicionado ao grupo '{conv.Id}'.";
         });
     }
 
-    // --- Bindables (login/estado) ---
+    // --- Bindables ---
     private string _host = "127.0.0.1";
     public string Host { get => _host; set => SetProperty(ref _host, value); }
 
@@ -123,7 +131,6 @@ public sealed class MainViewModel : ObservableObject
     private string _progress = "0%";
     public string ProgressText { get => _progress; set => SetProperty(ref _progress, value); }
 
-    // --- Conversas ---
     public ObservableCollection<Conversation> Directs { get; } = new();
     public ObservableCollection<Conversation> Groups { get; } = new();
 
@@ -134,7 +141,12 @@ public sealed class MainViewModel : ObservableObject
         set
         {
             if (SetProperty(ref _selected, value) && value is not null)
+            {
                 value.Unread = 0;
+                // Chama as novas funções ao selecionar
+                _ = SyncHistoryAsync(value); 
+                _ = MarkAsReadAsync(value.Id);
+            }
 
             (SendCommand as RelayCommand)?.RaiseCanExecuteChanged();
             (AttachCommand as RelayCommand)?.RaiseCanExecuteChanged();
@@ -179,7 +191,6 @@ public sealed class MainViewModel : ObservableObject
         }
     }
 
-    // --- Composer / grupos ---
     private string _compose = "";
     public string Compose
     {
@@ -191,24 +202,18 @@ public sealed class MainViewModel : ObservableObject
         }
     }
 
-    private string _newGroup = "";
-    public string NewGroup { get => _newGroup; set => SetProperty(ref _newGroup, value); }
-
-    private string _newMember = "";
-    public string NewMember { get => _newMember; set => SetProperty(ref _newMember, value); }
-
     // --- Commands ---
     public ICommand ConnectCommand { get; }
     public ICommand ListUsersCommand { get; }
-    public ICommand CreateGroupCommand { get; }
-    public ICommand AddMemberCommand { get; }
+    // Removidos os comandos duplicados/não usados que causavam erro
     public ICommand NewDirectCommand { get; }
     public ICommand NewGroupCommand { get; }
     public ICommand AddMemberToGroupCommand { get; }
     public ICommand SendCommand { get; }
     public ICommand AttachCommand { get; }
 
-    // --- Handlers (recebimento via socket permanece igual) ---
+    // --- Métodos Privados ---
+
     private void HandlePrivate(string from, string text)
     {
         var c = EnsureConversation(ConversationType.Direct, from);
@@ -271,7 +276,6 @@ public sealed class MainViewModel : ObservableObject
                     sent = await _grpc.PublishGroupAsync(Username, Selected.Id, text);
             }
 
-            // Fallback: se gRPC falhar/não estiver pronto, usa socket antigo
             if (!sent)
             {
                 if (Selected.Type == ConversationType.Direct)
@@ -301,7 +305,7 @@ public sealed class MainViewModel : ObservableObject
             var dlg = new OpenFileDialog { Title = "Selecione o arquivo", CheckFileExists = true };
             if (dlg.ShowDialog() == true)
             {
-                await _chat.SendFileAsync(Selected.Id, dlg.FileName); // envio de arquivo continua via socket
+                await _chat.SendFileAsync(Selected.Id, dlg.FileName);
                 Selected.Add(new MessageItem
                 {
                     From = Username,
@@ -312,14 +316,125 @@ public sealed class MainViewModel : ObservableObject
                     FileName = Path.GetFileName(dlg.FileName),
                 }, isActive: true);
             }
-            else
-            {
-                Info = "Envio cancelado.";
-            }
         }
         catch (Exception ex)
         {
             Info = "[Arquivo] Falha ao enviar: " + ex.Message;
         }
     }
+
+    // --- NOVOS MÉTODOS PARA HISTÓRICO E STATUS DE LEITURA ---
+
+    private async Task SyncHistoryAsync(Conversation conv)
+    {
+        try
+        {
+            var p1 = Username;
+            var p2 = conv.Id; 
+            var sala = string.CompareOrdinal(p1, p2) < 0 ? $"{p1}:{p2}" : $"{p2}:{p1}";
+            var conversaId = StringToGuid(sala);
+            var myId = StringToGuid(Username);
+
+            using var http = new HttpClient();
+            http.BaseAddress = new Uri("http://localhost:5082");
+            http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", _jwtToken);
+
+            var url = $"/v1/conversations/{conversaId}/messages?limit=50";
+            var res = await http.GetAsync(url);
+            
+            if (!res.IsSuccessStatusCode) return;
+
+            var json = await res.Content.ReadAsStringAsync();
+            var data = JsonSerializer.Deserialize<ApiMessageResponse>(json);
+
+            if (data?.items is null) return;
+
+            foreach (var msg in data.items.OrderBy(x => x.criadoEm))
+            {
+                string texto = "";
+                try { texto = msg.conteudo.GetProperty("text").GetString() ?? ""; } 
+                catch { texto = "[Arquivo/Complexo]"; }
+
+                bool isMine = (msg.usuarioRemetenteId == myId);
+                
+                var exists = conv.Messages.Any(m => m.Text == texto && Math.Abs((m.Timestamp - msg.criadoEm).TotalSeconds) < 2);
+
+                if (!exists)
+                {
+                    conv.Add(new MessageItem
+                    {
+                        From = isMine ? Username : conv.Id,
+                        Text = texto,
+                        IsMine = isMine,
+                        Timestamp = msg.criadoEm.ToLocalTime()
+                    }, isActive: Selected == conv);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Info = $"[Sync] Falha: {ex.Message}";
+        }
+    }
+
+    private async Task MarkAsReadAsync(string conversaNome)
+    {
+        try {
+            var convId = StringToGuid(conversaNome);
+            using var http = new HttpClient { BaseAddress = new Uri("http://localhost:5082") };
+            http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", _jwtToken);
+            
+            await http.PostAsync($"/v1/conversations/{convId}/read", null);
+        } catch { /* ignora erro de read receipt */ }
+    }
+
+    private string GenerateDevToken(string username)
+    {
+        var userId = StringToGuid(username);
+        var tenantId = StringToGuid("default-org");
+
+        var issuer = "Whatslike";
+        var audience = "Whatslike.Clients";
+        var secret = "26c8d9a793975af4999bc048990f6fd1"; 
+        
+        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(secret));
+        var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
+
+        var claims = new[]
+        {
+            new Claim(JwtRegisteredClaimNames.Sub, username),
+            new Claim(JwtRegisteredClaimNames.Name, username),
+            new Claim("tenant_id", tenantId.ToString())
+        };
+
+        var token = new JwtSecurityToken(
+            issuer: issuer,
+            audience: audience,
+            claims: claims,
+            expires: DateTime.UtcNow.AddYears(10),
+            signingCredentials: creds
+        );
+
+        return new JwtSecurityTokenHandler().WriteToken(token);
+    }
+
+    private static Guid StringToGuid(string value)
+    {
+        using var md5 = MD5.Create();
+        var hash = md5.ComputeHash(Encoding.UTF8.GetBytes(value));
+        return new Guid(hash);
+    }
+}
+
+public class ApiMessageResponse
+{
+    public List<ApiMessageItem> items { get; set; } = new();
+}
+
+public class ApiMessageItem
+{
+    public string direcao { get; set; } = string.Empty; 
+    public Guid usuarioRemetenteId { get; set; }
+    public JsonElement conteudo { get; set; }
+    public DateTime criadoEm { get; set; }
 }
