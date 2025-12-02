@@ -1,21 +1,25 @@
-﻿namespace Chat.Api.Infrastructure.Storage
-{
-    using System.Security.Cryptography;
-    using Minio;
-    using Minio.DataModel.Args;
+using System.Security.Cryptography;
+using Minio;
+using Minio.DataModel.Args;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 
+namespace Chat.Api.Infrastructure.Storage
+{
     public class MinioObjectStorageService : IObjectStorageService
     {
-        private readonly MinioClient _client;
+        // Alterado de MinioClient para IMinioClient (Interface)
+        private readonly IMinioClient _client;
         private readonly ILogger<MinioObjectStorageService> _logger;
         private readonly string _bucketName;
 
         public MinioObjectStorageService(
-            MinioClient client,
+            IMinioClient client,                  // <--- Recebe a Interface agora
+            ILogger<MinioObjectStorageService> logger, // <--- Adicionado Logger corretamente
             IConfiguration config)
         {
             _client = client;
-            //_logger = logger;
+            _logger = logger;
             _bucketName = config["Minio:BucketName"] ?? "whatslike-files";
         }
 
@@ -39,15 +43,10 @@
                     ct);
             }
 
-            // file_id = Guid
             var fileId = Guid.NewGuid();
-
-            // Object key: opcionalmente incluir conversationId
             var safeFileName = Path.GetFileName(fileName);
             var objectKey = $"{conversationId ?? Guid.Empty}/{fileId}/{safeFileName}";
 
-            // Calcula checksum SHA-256 enquanto copia para um MemoryStream
-            // (em produção, ideal streamar direto e calcular no fluxo para arquivos realmente grandes)
             using var ms = new MemoryStream();
             await stream.CopyToAsync(ms, ct);
             ms.Position = 0;
@@ -62,7 +61,6 @@
             ms.Position = 0;
             var size = ms.Length;
 
-            // Limite de 2GB (PDF)
             const long maxSize = 2L * 1024 * 1024 * 1024;
             if (size > maxSize)
             {
@@ -94,19 +92,18 @@
         }
 
         public async Task<string> GetDownloadUrlAsync(
-    string bucket,
-    string objectKey,
-    TimeSpan expiry,
-    CancellationToken ct = default)
+            string bucket,
+            string objectKey,
+            TimeSpan expiry,
+            CancellationToken ct = default)
         {
             var args = new PresignedGetObjectArgs()
                 .WithBucket(bucket)
                 .WithObject(objectKey)
-                .WithExpiry((int)expiry.TotalSeconds); // em segundos
+                .WithExpiry((int)expiry.TotalSeconds);
 
             var url = await _client.PresignedGetObjectAsync(args);
             return url;
         }
     }
-
 }
