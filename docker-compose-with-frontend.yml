@@ -130,7 +130,7 @@ services:
       - Jwt__Issuer=Whatslike
       - Jwt__Audience=Whatslike.Clients
       - Jwt__DisableLifetimeValidation=true
-      - Cassandra__ContactPoints=cassandra
+      - Cassandra__ContactPoints__0=cassandra    # Com __0!
       - Cassandra__Keyspace=chat
       - Kafka__BootstrapServers=kafka:9092
       - KAFKA_BOOTSTRAP=kafka:9092
@@ -155,13 +155,38 @@ services:
     networks:
       - chatnet
 
+  chat-frontend:
+    build:
+      context: .
+      dockerfile: Chat.Frontend/Dockerfile
+    container_name: chat-frontend
+    environment:
+      - ASPNETCORE_URLS=http://+:8080
+      - JWT_ISSUER=Whatslike
+      - JWT_AUDIENCE=Whatslike.Clients
+      - JWT_SECRET=26c8d9a793975af4999bc048990f6fd1
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - REDIS_CONNECTION_STRING=redis:6379
+      - CHAT_API_URL=http://chat-api:5000
+    ports:
+      - "8080:8080"
+    depends_on:
+      kafka:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      chat-api:
+        condition: service_started
+    networks:
+      - chatnet
+
   router-worker:
     build:
       context: .
       dockerfile: Chat.RouterWorker/Dockerfile
     container_name: router-worker
     environment:
-      - Cassandra__ContactPoints=cassandra
+      - Cassandra__ContactPoints__0=cassandra    # Com __0!
       - Cassandra__Keyspace=chat
       - WorkerKafka__BootstrapServers=kafka:9092
       - WorkerKafka__TopicMessages=messages
@@ -182,7 +207,7 @@ services:
       dockerfile: Chat.StatusWorker/Dockerfile
     container_name: status-worker
     environment:
-      - Cassandra__ContactPoints=cassandra
+      - Cassandra__ContactPoints__0=cassandra    # Com __0!
       - Cassandra__Keyspace=chat
       - KAFKA_BOOTSTRAP=kafka:9092
       - REDIS_URL=redis:6379

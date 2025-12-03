@@ -155,6 +155,31 @@ services:
     networks:
       - chatnet
 
+  chat-frontend:
+    build:
+      context: .
+      dockerfile: Chat.Frontend/Dockerfile
+    container_name: chat-frontend
+    environment:
+      - ASPNETCORE_URLS=http://+:8080
+      - JWT_ISSUER=Whatslike
+      - JWT_AUDIENCE=Whatslike.Clients
+      - JWT_SECRET=26c8d9a793975af4999bc048990f6fd1
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - REDIS_CONNECTION_STRING=redis:6379
+      - CHAT_API_URL=http://chat-api:5000
+    ports:
+      - "8080:8080"
+    depends_on:
+      kafka:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      chat-api:
+        condition: service_started
+    networks:
+      - chatnet
+
   router-worker:
     build:
       context: .

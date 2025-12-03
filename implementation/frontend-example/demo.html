@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat Status WebSocket - Demo</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: #f5f5f5;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+
+        .header {
+            background: #007bff;
+            color: white;
+            padding: 20px;
+        }
+
+        .header h1 {
+            font-size: 24px;
+            margin-bottom: 5px;
+        }
+
+        .header p {
+            opacity: 0.9;
+            font-size: 14px;
+        }
+
+        .connection-status {
+            padding: 15px 20px;
+            background: #f8f9fa;
+            border-bottom: 1px solid #dee2e6;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .status-indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #dc3545;
+            animation: pulse 2s infinite;
+        }
+
+        .status-indicator.connected {
+            background: #28a745;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .main-content {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            padding: 20px;
+        }
+
+        .panel {
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .panel-header {
+            background: #f8f9fa;
+            padding: 12px 15px;
+            border-bottom: 1px solid #dee2e6;
+            font-weight: 600;
+        }
+
+        .panel-body {
+            padding: 15px;
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 500;
+            font-size: 14px;
+        }
+
+        input, textarea, select {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid #ced4da;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+
+        textarea {
+            min-height: 60px;
+            resize: vertical;
+        }
+
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+        }
+
+        button:hover {
+            background: #0056b3;
+        }
+
+        button:disabled {
+            background: #6c757d;
+            cursor: not-allowed;
+        }
+
+        button.danger {
+            background: #dc3545;
+        }
+
+        button.danger:hover {
+            background: #c82333;
+        }
+
+        .events-log {
+            height: 400px;
+            overflow-y: auto;
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 10px;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+        }
+
+        .event-item {
+            margin-bottom: 8px;
+            padding: 8px;
+            background: white;
+            border-radius: 3px;
+            border-left: 3px solid #007bff;
+        }
+
+        .event-item.status {
+            border-left-color: #28a745;
+        }
+
+        .event-item.error {
+            border-left-color: #dc3545;
+        }
+
+        .event-time {
+            color: #6c757d;
+            font-size: 11px;
+        }
+
+        .event-type {
+            font-weight: 600;
+            color: #007bff;
+        }
+
+        .messages-list {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .message-item {
+            padding: 12px;
+            background: #f8f9fa;
+            border-radius: 4px;
+            border-left: 3px solid #007bff;
+        }
+
+        .message-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 5px;
+        }
+
+        .message-id {
+            font-family: 'Courier New', monospace;
+            font-size: 11px;
+            color: #6c757d;
+        }
+
+        .message-status {
+            font-size: 11px;
+            font-weight: 600;
+            padding: 2px 8px;
+            border-radius: 3px;
+            background: #6c757d;
+            color: white;
+        }
+
+        .status-sent { background: #ffc107; color: #000; }
+        .status-delivered { background: #17a2b8; }
+        .status-read { background: #28a745; }
+
+        .subscriptions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 10px;
+        }
+
+        .subscription-badge {
+            padding: 4px 12px;
+            background: #007bff;
+            color: white;
+            border-radius: 12px;
+            font-size: 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .subscription-badge button {
+            background: transparent;
+            border: none;
+            color: white;
+            padding: 0;
+            cursor: pointer;
+            font-size: 16px;
+            line-height: 1;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔌 Chat Status WebSocket - Demo</h1>
+            <p>Sistema de notificação em tempo real para status de mensagens</p>
+        </div>
+
+        <div class="connection-status">
+            <div class="status-indicator" id="statusIndicator"></div>
+            <span id="statusText">Desconectado</span>
+        </div>
+
+        <div class="main-content">
+            <!-- Painel de Configuração -->
+            <div class="panel">
+                <div class="panel-header">⚙️ Configuração</div>
+                <div class="panel-body">
+                    <div class="form-group">
+                        <label>API URL</label>
+                        <input type="text" id="apiUrl" value="http://localhost:5000" />
+                    </div>
+                    <div class="form-group">
+                        <label>JWT Token</label>
+                        <textarea id="jwtToken" placeholder="Cole seu token JWT aqui"></textarea>
+                    </div>
+                    <button id="connectBtn" onclick="handleConnect()">Conectar</button>
+                    <button id="disconnectBtn" onclick="handleDisconnect()" disabled class="danger">Desconectar</button>
+
+                    <hr style="margin: 20px 0;">
+
+                    <div class="form-group">
+                        <label>Conversation ID para inscrever</label>
+                        <input type="text" id="conversationId" placeholder="UUID da conversa" />
+                    </div>
+                    <button onclick="handleSubscribe()" id="subscribeBtn" disabled>Inscrever</button>
+
+                    <div class="subscriptions" id="subscriptionsList"></div>
+                </div>
+            </div>
+
+            <!-- Painel de Eventos -->
+            <div class="panel">
+                <div class="panel-header">
+                    📡 Log de Eventos
+                    <button onclick="clearEvents()" style="float: right; padding: 4px 12px; font-size: 12px;">Limpar</button>
+                </div>
+                <div class="panel-body">
+                    <div class="events-log" id="eventsLog"></div>
+                </div>
+            </div>
+
+            <!-- Painel de Mensagens -->
+            <div class="panel" style="grid-column: span 2;">
+                <div class="panel-header">💬 Mensagens Simuladas</div>
+                <div class="panel-body">
+                    <div id="messagesList" class="messages-list">
+                        <p style="color: #6c757d; text-align: center;">
+                            As mensagens aparecerão aqui quando os status forem atualizados
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="websocket-client.js"></script>
+    <script>
+        let client = null;
+        const messages = new Map();
+
+        function handleConnect() {
+            const apiUrl = document.getElementById('apiUrl').value;
+            const token = document.getElementById('jwtToken').value.trim();
+
+            if (!token) {
+                alert('Por favor, insira um JWT token');
+                return;
+            }
+
+            client = new ChatStatusClient(apiUrl, token);
+
+            // Registrar handlers
+            client.on('connected', (data) => {
+                updateStatus(true);
+                logEvent('connected', 'Conectado ao WebSocket', data);
+                document.getElementById('subscribeBtn').disabled = false;
+            });
+
+            client.on('disconnected', (data) => {
+                updateStatus(false);
+                logEvent('error', 'Desconectado', data);
+                document.getElementById('subscribeBtn').disabled = true;
+            });
+
+            client.on('subscribed', (data) => {
+                logEvent('status', `Inscrito na conversa: ${data.conversationId}`, data);
+                updateSubscriptionsList();
+            });
+
+            client.on('unsubscribed', (data) => {
+                logEvent('status', `Desinscrito da conversa: ${data.conversationId}`, data);
+                updateSubscriptionsList();
+            });
+
+            client.on('message.status', (data) => {
+                logEvent('status', `Status atualizado: ${data.status} para msg ${data.messageId.substring(0, 8)}...`, data);
+                updateMessageStatus(data);
+            });
+
+            client.on('error', (error) => {
+                logEvent('error', 'Erro no WebSocket', error);
+            });
+
+            client.connect();
+            client.startPing(30000);
+
+            document.getElementById('connectBtn').disabled = true;
+            document.getElementById('disconnectBtn').disabled = false;
+        }
+
+        function handleDisconnect() {
+            if (client) {
+                client.disconnect();
+                client = null;
+            }
+            updateStatus(false);
+            document.getElementById('connectBtn').disabled = false;
+            document.getElementById('disconnectBtn').disabled = true;
+            document.getElementById('subscribeBtn').disabled = true;
+        }
+
+        function handleSubscribe() {
+            const conversationId = document.getElementById('conversationId').value.trim();
+            if (!conversationId) {
+                alert('Por favor, insira um Conversation ID');
+                return;
+            }
+
+            if (client) {
+                client.subscribe(conversationId);
+            }
+        }
+
+        function handleUnsubscribe(conversationId) {
+            if (client) {
+                client.unsubscribe(conversationId);
+            }
+        }
+
+        function updateStatus(connected) {
+            const indicator = document.getElementById('statusIndicator');
+            const text = document.getElementById('statusText');
+            
+            if (connected) {
+                indicator.classList.add('connected');
+                text.textContent = 'Conectado';
+            } else {
+                indicator.classList.remove('connected');
+                text.textContent = 'Desconectado';
+            }
+        }
+
+        function logEvent(type, message, data = null) {
+            const log = document.getElementById('eventsLog');
+            const eventDiv = document.createElement('div');
+            eventDiv.className = `event-item ${type}`;
+            
+            const time = new Date().toLocaleTimeString();
+            eventDiv.innerHTML = `
+                <div class="event-time">${time}</div>
+                <div class="event-type">${type.toUpperCase()}</div>
+                <div>${message}</div>
+                ${data ? `<pre style="margin-top: 5px; font-size: 11px;">${JSON.stringify(data, null, 2)}</pre>` : ''}
+            `;
+            
+            log.insertBefore(eventDiv, log.firstChild);
+            
+            // Limitar a 50 eventos
+            while (log.children.length > 50) {
+                log.removeChild(log.lastChild);
+            }
+        }
+
+        function clearEvents() {
+            document.getElementById('eventsLog').innerHTML = '';
+        }
+
+        function updateMessageStatus(data) {
+            const { messageId, status, conversationId, channel } = data;
+            
+            if (!messages.has(messageId)) {
+                messages.set(messageId, {
+                    id: messageId,
+                    conversationId,
+                    channel,
+                    status: status,
+                    timestamp: new Date()
+                });
+            } else {
+                const msg = messages.get(messageId);
+                msg.status = status;
+            }
+
+            renderMessages();
+        }
+
+        function renderMessages() {
+            const container = document.getElementById('messagesList');
+            const sortedMessages = Array.from(messages.values())
+                .sort((a, b) => b.timestamp - a.timestamp);
+
+            if (sortedMessages.length === 0) {
+                container.innerHTML = '<p style="color: #6c757d; text-align: center;">Nenhuma mensagem ainda</p>';
+                return;
+            }
+
+            container.innerHTML = sortedMessages.map(msg => `
+                <div class="message-item">
+                    <div class="message-header">
+                        <span class="message-id">ID: ${msg.id}</span>
+                        <span class="message-status status-${msg.status.toLowerCase()}">${msg.status}</span>
+                    </div>
+                    <div style="font-size: 12px; color: #6c757d;">
+                        Conversa: ${msg.conversationId} | Canal: ${msg.channel}
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function updateSubscriptionsList() {
+            const container = document.getElementById('subscriptionsList');
+            
+            if (!client || client.subscriptions.size === 0) {
+                container.innerHTML = '';
+                return;
+            }
+
+            container.innerHTML = Array.from(client.subscriptions).map(id => `
+                <div class="subscription-badge">
+                    ${id.substring(0, 8)}...
+                    <button onclick="handleUnsubscribe('${id}')" title="Desinscrever">×</button>
+                </div>
+            `).join('');
+        }
+    </script>
+</body>
+</html>
