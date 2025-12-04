@@ -13,7 +13,16 @@ public class Program
             .ConfigureServices((ctx, services) =>
             {
                 services.AddCassandraPersistence(ctx.Configuration);
-                services.Configure<WorkerKafkaOptions>(ctx.Configuration.GetSection("Kafka"));
+                var kafkaBootstrap = Environment.GetEnvironmentVariable("KAFKA_BOOTSTRAP_SERVERS") ??
+                     Environment.GetEnvironmentVariable("WorkerKafka__BootstrapServers") ??
+                     ctx.Configuration["WorkerKafka:BootstrapServers"] ??
+                     "kafka:9092";
+
+                services.Configure<WorkerKafkaOptions>(options =>
+                {
+                    options.BootstrapServers = kafkaBootstrap;
+                    ctx.Configuration.GetSection("WorkerKafka").Bind(options);
+                });
                 services.AddHostedService<RouterWorkerService>();
             })
             .Build();

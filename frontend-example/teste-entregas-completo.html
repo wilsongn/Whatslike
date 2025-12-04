@@ -1,0 +1,1606 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat4All - Teste Completo de Entregas</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --primary: #6366f1;
+            --primary-dark: #4f46e5;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --info: #3b82f6;
+            --gray-50: #f9fafb;
+            --gray-100: #f3f4f6;
+            --gray-200: #e5e7eb;
+            --gray-300: #d1d5db;
+            --gray-500: #6b7280;
+            --gray-700: #374151;
+            --gray-900: #111827;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1600px;
+            margin: 0 auto;
+        }
+
+        .header {
+            background: white;
+            border-radius: 16px;
+            padding: 24px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+        }
+
+        .header h1 {
+            font-size: 28px;
+            color: var(--gray-900);
+            margin-bottom: 8px;
+        }
+
+        .header p {
+            color: var(--gray-500);
+        }
+
+        .status-bar {
+            display: flex;
+            gap: 20px;
+            margin-top: 16px;
+            flex-wrap: wrap;
+        }
+
+        .status-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 16px;
+            background: var(--gray-100);
+            border-radius: 20px;
+            font-size: 14px;
+        }
+
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: var(--danger);
+        }
+
+        .status-dot.connected {
+            background: var(--success);
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .main-grid {
+            display: grid;
+            grid-template-columns: 350px 1fr 350px;
+            gap: 20px;
+        }
+
+        @media (max-width: 1200px) {
+            .main-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .panel {
+            background: white;
+            border-radius: 16px;
+            overflow: hidden;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+        }
+
+        .panel-header {
+            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+            color: white;
+            padding: 16px 20px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .panel-body {
+            padding: 20px;
+        }
+
+        .form-group {
+            margin-bottom: 16px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 6px;
+            font-weight: 500;
+            color: var(--gray-700);
+            font-size: 14px;
+        }
+
+        .form-group input,
+        .form-group textarea,
+        .form-group select {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid var(--gray-200);
+            border-radius: 8px;
+            font-size: 14px;
+            transition: border-color 0.2s;
+        }
+
+        .form-group input:focus,
+        .form-group textarea:focus,
+        .form-group select:focus {
+            outline: none;
+            border-color: var(--primary);
+        }
+
+        .form-group textarea {
+            resize: vertical;
+            min-height: 80px;
+            font-family: monospace;
+            font-size: 12px;
+        }
+
+        .btn {
+            padding: 12px 20px;
+            border: none;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .btn-primary {
+            background: var(--primary);
+            color: white;
+        }
+
+        .btn-primary:hover:not(:disabled) {
+            background: var(--primary-dark);
+            transform: translateY(-2px);
+        }
+
+        .btn-success {
+            background: var(--success);
+            color: white;
+        }
+
+        .btn-danger {
+            background: var(--danger);
+            color: white;
+        }
+
+        .btn-info {
+            background: var(--info);
+            color: white;
+        }
+
+        .btn-warning {
+            background: var(--warning);
+            color: white;
+        }
+
+        .btn-block {
+            width: 100%;
+            justify-content: center;
+        }
+
+        .btn-group {
+            display: flex;
+            gap: 10px;
+            margin-top: 10px;
+        }
+
+        .btn-group .btn {
+            flex: 1;
+        }
+
+        /* Chat Area */
+        .chat-container {
+            display: flex;
+            flex-direction: column;
+            height: 600px;
+        }
+
+        .messages-area {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+            background: var(--gray-50);
+        }
+
+        .message {
+            margin-bottom: 16px;
+            padding: 16px;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+        }
+
+        .message.outbound {
+            border-left: 4px solid var(--primary);
+        }
+
+        .message.inbound {
+            border-left: 4px solid var(--success);
+        }
+
+        .message-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            font-size: 12px;
+            color: var(--gray-500);
+        }
+
+        .message-content {
+            color: var(--gray-900);
+            font-size: 14px;
+            line-height: 1.5;
+            word-break: break-word;
+        }
+
+        .message-attachment {
+            margin-top: 10px;
+            padding: 10px;
+            background: var(--gray-100);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .message-attachment-icon {
+            font-size: 24px;
+        }
+
+        .message-status {
+            margin-top: 10px;
+            padding-top: 10px;
+            border-top: 1px solid var(--gray-200);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 12px;
+        }
+
+        .status-badge {
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .status-sending { background: var(--gray-200); color: var(--gray-700); }
+        .status-sent { background: #fef3c7; color: #92400e; }
+        .status-delivered { background: #dbeafe; color: #1e40af; }
+        .status-read { background: #d1fae5; color: #065f46; }
+        .status-failed { background: #fee2e2; color: #991b1b; }
+
+        .send-area {
+            padding: 20px;
+            border-top: 2px solid var(--gray-200);
+            background: white;
+        }
+
+        .send-form {
+            display: flex;
+            gap: 10px;
+        }
+
+        .send-form input {
+            flex: 1;
+            padding: 14px;
+            border: 2px solid var(--gray-200);
+            border-radius: 8px;
+            font-size: 14px;
+        }
+
+        .send-form input:focus {
+            outline: none;
+            border-color: var(--primary);
+        }
+
+        /* Tabs */
+        .tabs {
+            display: flex;
+            border-bottom: 2px solid var(--gray-200);
+        }
+
+        .tab {
+            padding: 12px 20px;
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+            margin-bottom: -2px;
+            font-weight: 500;
+            color: var(--gray-500);
+            transition: all 0.2s;
+        }
+
+        .tab:hover {
+            color: var(--primary);
+        }
+
+        .tab.active {
+            color: var(--primary);
+            border-bottom-color: var(--primary);
+        }
+
+        .tab-content {
+            display: none;
+            padding: 20px;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        /* Log Area */
+        .log-container {
+            max-height: 300px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 12px;
+            background: var(--gray-900);
+            color: #10b981;
+            padding: 16px;
+            border-radius: 8px;
+        }
+
+        .log-entry {
+            margin-bottom: 4px;
+            padding: 4px 0;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .log-time {
+            color: var(--gray-500);
+            margin-right: 10px;
+        }
+
+        .log-success { color: #10b981; }
+        .log-error { color: #ef4444; }
+        .log-info { color: #3b82f6; }
+        .log-warning { color: #f59e0b; }
+
+        /* File Upload */
+        .file-upload-area {
+            border: 2px dashed var(--gray-300);
+            border-radius: 12px;
+            padding: 30px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .file-upload-area:hover {
+            border-color: var(--primary);
+            background: var(--gray-50);
+        }
+
+        .file-upload-area.dragover {
+            border-color: var(--primary);
+            background: rgba(99, 102, 241, 0.1);
+        }
+
+        .file-upload-icon {
+            font-size: 48px;
+            margin-bottom: 10px;
+        }
+
+        .file-list {
+            margin-top: 16px;
+        }
+
+        .file-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px;
+            background: var(--gray-100);
+            border-radius: 8px;
+            margin-bottom: 8px;
+        }
+
+        .file-item-info {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .file-progress {
+            width: 100%;
+            height: 4px;
+            background: var(--gray-200);
+            border-radius: 2px;
+            margin-top: 8px;
+            overflow: hidden;
+        }
+
+        .file-progress-bar {
+            height: 100%;
+            background: var(--primary);
+            transition: width 0.3s;
+        }
+
+        /* Metrics Panel */
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 12px;
+        }
+
+        .metric-card {
+            background: var(--gray-50);
+            padding: 16px;
+            border-radius: 12px;
+            text-align: center;
+        }
+
+        .metric-value {
+            font-size: 28px;
+            font-weight: 700;
+            color: var(--primary);
+        }
+
+        .metric-label {
+            font-size: 12px;
+            color: var(--gray-500);
+            margin-top: 4px;
+        }
+
+        /* Subscriptions */
+        .subscriptions-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 10px;
+        }
+
+        .subscription-badge {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 12px;
+            background: var(--primary);
+            color: white;
+            border-radius: 20px;
+            font-size: 12px;
+        }
+
+        .subscription-badge button {
+            background: rgba(255,255,255,0.3);
+            border: none;
+            color: white;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            cursor: pointer;
+            font-size: 12px;
+        }
+
+        /* Test Results */
+        .test-result {
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .test-result.pass {
+            background: #d1fae5;
+            color: #065f46;
+        }
+
+        .test-result.fail {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+
+        .test-result.pending {
+            background: #fef3c7;
+            color: #92400e;
+        }
+
+        /* Responsive fixes */
+        .sidebar {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 40px;
+            color: var(--gray-500);
+        }
+
+        .empty-state-icon {
+            font-size: 48px;
+            margin-bottom: 10px;
+            opacity: 0.5;
+        }
+
+        /* Toast notifications */
+        .toast-container {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1000;
+        }
+
+        .toast {
+            background: white;
+            padding: 16px 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            animation: slideIn 0.3s ease;
+        }
+
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+
+        .toast.success { border-left: 4px solid var(--success); }
+        .toast.error { border-left: 4px solid var(--danger); }
+        .toast.info { border-left: 4px solid var(--info); }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <h1>🚀 Chat4All - Teste Completo de Entregas</h1>
+            <p>Plataforma de testes para validar todas as funcionalidades do sistema</p>
+            <div class="status-bar">
+                <div class="status-item">
+                    <div class="status-dot" id="wsStatus"></div>
+                    <span id="wsStatusText">WebSocket: Desconectado</span>
+                </div>
+                <div class="status-item">
+                    <div class="status-dot" id="apiStatus"></div>
+                    <span id="apiStatusText">API: Verificando...</span>
+                </div>
+                <div class="status-item">
+                    <div class="status-dot" id="kafkaStatus"></div>
+                    <span id="kafkaStatusText">Kafka: Verificando...</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Grid -->
+        <div class="main-grid">
+            <!-- Left Sidebar - Configuration -->
+            <div class="sidebar">
+                <!-- Connection Panel -->
+                <div class="panel">
+                    <div class="panel-header">
+                        🔌 Conexão
+                    </div>
+                    <div class="panel-body">
+                        <div class="form-group">
+                            <label>URL da API</label>
+                            <input type="text" id="apiUrl" value="http://localhost:8080">
+                        </div>
+                        <div class="form-group">
+                            <label>JWT Token</label>
+                            <textarea id="jwtToken" placeholder="Cole seu token JWT aqui..."></textarea>
+                        </div>
+                        <button class="btn btn-primary btn-block" id="connectBtn" onclick="toggleConnection()">
+                            🔗 Conectar
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Subscription Panel -->
+                <div class="panel">
+                    <div class="panel-header">
+                        📬 Conversas
+                    </div>
+                    <div class="panel-body">
+                        <div class="form-group">
+                            <label>ID da Conversa</label>
+                            <input type="text" id="conversationId" value="conv-123" placeholder="ex: conv-123">
+                        </div>
+                        <div class="btn-group">
+                            <button class="btn btn-success" onclick="subscribe()" disabled id="subscribeBtn">
+                                ➕ Inscrever
+                            </button>
+                            <button class="btn btn-danger" onclick="unsubscribeAll()" disabled id="unsubscribeAllBtn">
+                                🗑️ Limpar
+                            </button>
+                        </div>
+                        <div class="subscriptions-list" id="subscriptionsList"></div>
+                    </div>
+                </div>
+
+                <!-- Metrics Panel -->
+                <div class="panel">
+                    <div class="panel-header">
+                        📊 Métricas
+                    </div>
+                    <div class="panel-body">
+                        <div class="metrics-grid">
+                            <div class="metric-card">
+                                <div class="metric-value" id="metricSent">0</div>
+                                <div class="metric-label">Enviadas</div>
+                            </div>
+                            <div class="metric-card">
+                                <div class="metric-value" id="metricReceived">0</div>
+                                <div class="metric-label">Recebidas</div>
+                            </div>
+                            <div class="metric-card">
+                                <div class="metric-value" id="metricLatency">0ms</div>
+                                <div class="metric-label">Latência Média</div>
+                            </div>
+                            <div class="metric-card">
+                                <div class="metric-value" id="metricErrors">0</div>
+                                <div class="metric-label">Erros</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Center - Chat -->
+            <div class="panel chat-container">
+                <div class="panel-header">
+                    💬 Chat em Tempo Real
+                </div>
+                <div class="messages-area" id="messagesArea">
+                    <div class="empty-state">
+                        <div class="empty-state-icon">💬</div>
+                        <p>Conecte-se e inscreva-se em uma conversa para começar</p>
+                    </div>
+                </div>
+                <div class="send-area">
+                    <div class="send-form">
+                        <input type="text" id="messageInput" placeholder="Digite sua mensagem..." disabled>
+                        <button class="btn btn-primary" onclick="sendMessage()" disabled id="sendBtn">
+                            📤 Enviar
+                        </button>
+                        <button class="btn btn-info" onclick="showFileModal()" disabled id="attachBtn">
+                            📎
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Sidebar - Tests & Logs -->
+            <div class="sidebar">
+                <!-- Test Panel -->
+                <div class="panel">
+                    <div class="panel-header">
+                        🧪 Testes de Entregas
+                    </div>
+                    <div class="panel-body">
+                        <div class="tabs">
+                            <div class="tab active" onclick="switchTab('tests')">Testes</div>
+                            <div class="tab" onclick="switchTab('upload')">Upload</div>
+                            <div class="tab" onclick="switchTab('logs')">Logs</div>
+                        </div>
+
+                        <!-- Tests Tab -->
+                        <div class="tab-content active" id="tab-tests">
+                            <button class="btn btn-primary btn-block" onclick="runAllTests()" style="margin-bottom: 16px;">
+                                ▶️ Executar Todos os Testes
+                            </button>
+                            <div id="testResults">
+                                <div class="test-result pending" id="test-websocket">
+                                    ⏳ WebSocket - Aguardando
+                                </div>
+                                <div class="test-result pending" id="test-send-message">
+                                    ⏳ Envio de Mensagem - Aguardando
+                                </div>
+                                <div class="test-result pending" id="test-status-update">
+                                    ⏳ Atualização de Status - Aguardando
+                                </div>
+                                <div class="test-result pending" id="test-file-upload">
+                                    ⏳ Upload de Arquivo - Aguardando
+                                </div>
+                                <div class="test-result pending" id="test-presigned-url">
+                                    ⏳ Presigned URL - Aguardando
+                                </div>
+                                <div class="test-result pending" id="test-connector">
+                                    ⏳ Connector Mock - Aguardando
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Upload Tab -->
+                        <div class="tab-content" id="tab-upload">
+                            <div class="file-upload-area" id="dropZone" onclick="document.getElementById('fileInput').click()">
+                                <div class="file-upload-icon">📁</div>
+                                <p>Clique ou arraste arquivos aqui</p>
+                                <p style="font-size: 12px; color: var(--gray-500);">Suporta até 2GB</p>
+                            </div>
+                            <input type="file" id="fileInput" style="display: none;" onchange="handleFileSelect(event)">
+                            <div class="file-list" id="fileList"></div>
+                            <button class="btn btn-success btn-block" onclick="uploadFiles()" disabled id="uploadBtn" style="margin-top: 16px;">
+                                ⬆️ Fazer Upload
+                            </button>
+                        </div>
+
+                        <!-- Logs Tab -->
+                        <div class="tab-content" id="tab-logs">
+                            <button class="btn btn-danger btn-block" onclick="clearLogs()" style="margin-bottom: 10px;">
+                                🗑️ Limpar Logs
+                            </button>
+                            <div class="log-container" id="logContainer">
+                                <div class="log-entry">Sistema iniciado. Aguardando conexão...</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Quick Actions -->
+                <div class="panel">
+                    <div class="panel-header">
+                        ⚡ Ações Rápidas
+                    </div>
+                    <div class="panel-body">
+                        <button class="btn btn-info btn-block" onclick="checkHealth()" style="margin-bottom: 10px;">
+                            🏥 Verificar Saúde da API
+                        </button>
+                        <button class="btn btn-warning btn-block" onclick="simulateLoad()" style="margin-bottom: 10px;">
+                            🔥 Simular Carga (10 msgs)
+                        </button>
+                        <button class="btn btn-success btn-block" onclick="testFullFlow()" style="margin-bottom: 10px;">
+                            🔄 Testar Fluxo Completo
+                        </button>
+                        <button class="btn btn-primary btn-block" onclick="openGrafana()">
+                            📈 Abrir Grafana
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Container -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <script>
+        // ===== STATE =====
+        let ws = null;
+        let connected = false;
+        let subscriptions = new Set();
+        let messages = new Map();
+        let currentConversation = null;
+        let pendingFiles = [];
+        let metrics = {
+            sent: 0,
+            received: 0,
+            latencies: [],
+            errors: 0
+        };
+
+        // ===== UTILITIES =====
+        function log(message, type = 'info') {
+            const container = document.getElementById('logContainer');
+            const time = new Date().toLocaleTimeString();
+            const entry = document.createElement('div');
+            entry.className = `log-entry log-${type}`;
+            entry.innerHTML = `<span class="log-time">${time}</span>${message}`;
+            container.appendChild(entry);
+            container.scrollTop = container.scrollHeight;
+        }
+
+        function showToast(message, type = 'info') {
+            const container = document.getElementById('toastContainer');
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            toast.innerHTML = `<span>${message}</span>`;
+            container.appendChild(toast);
+            setTimeout(() => toast.remove(), 5000);
+        }
+
+        function generateUUID() {
+            return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+                var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
+                return v.toString(16);
+            });
+        }
+
+        function updateMetrics() {
+            document.getElementById('metricSent').textContent = metrics.sent;
+            document.getElementById('metricReceived').textContent = metrics.received;
+            document.getElementById('metricErrors').textContent = metrics.errors;
+            
+            if (metrics.latencies.length > 0) {
+                const avg = metrics.latencies.reduce((a, b) => a + b, 0) / metrics.latencies.length;
+                document.getElementById('metricLatency').textContent = `${avg.toFixed(0)}ms`;
+            }
+        }
+
+        function updateConnectionStatus(isConnected) {
+            connected = isConnected;
+            const dot = document.getElementById('wsStatus');
+            const text = document.getElementById('wsStatusText');
+            const btn = document.getElementById('connectBtn');
+            const subscribeBtn = document.getElementById('subscribeBtn');
+            const unsubscribeAllBtn = document.getElementById('unsubscribeAllBtn');
+            const messageInput = document.getElementById('messageInput');
+            const sendBtn = document.getElementById('sendBtn');
+            const attachBtn = document.getElementById('attachBtn');
+            const uploadBtn = document.getElementById('uploadBtn');
+
+            if (isConnected) {
+                dot.classList.add('connected');
+                text.textContent = 'WebSocket: Conectado';
+                btn.textContent = '🔌 Desconectar';
+                btn.classList.remove('btn-primary');
+                btn.classList.add('btn-danger');
+                subscribeBtn.disabled = false;
+                unsubscribeAllBtn.disabled = false;
+                uploadBtn.disabled = false;
+            } else {
+                dot.classList.remove('connected');
+                text.textContent = 'WebSocket: Desconectado';
+                btn.textContent = '🔗 Conectar';
+                btn.classList.remove('btn-danger');
+                btn.classList.add('btn-primary');
+                subscribeBtn.disabled = true;
+                unsubscribeAllBtn.disabled = true;
+                messageInput.disabled = true;
+                sendBtn.disabled = true;
+                attachBtn.disabled = true;
+                uploadBtn.disabled = true;
+            }
+        }
+
+        function updateSubscriptions() {
+            const list = document.getElementById('subscriptionsList');
+            const messageInput = document.getElementById('messageInput');
+            const sendBtn = document.getElementById('sendBtn');
+            const attachBtn = document.getElementById('attachBtn');
+
+            list.innerHTML = '';
+            
+            subscriptions.forEach(convId => {
+                const badge = document.createElement('div');
+                badge.className = 'subscription-badge';
+                badge.innerHTML = `
+                    ${convId}
+                    <button onclick="unsubscribe('${convId}')">×</button>
+                `;
+                list.appendChild(badge);
+            });
+
+            if (subscriptions.size > 0 && connected) {
+                messageInput.disabled = false;
+                sendBtn.disabled = false;
+                attachBtn.disabled = false;
+                if (!currentConversation) {
+                    currentConversation = subscriptions.values().next().value;
+                }
+            } else {
+                messageInput.disabled = true;
+                sendBtn.disabled = true;
+                attachBtn.disabled = true;
+            }
+        }
+
+        // ===== TABS =====
+        function switchTab(tabName) {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+            document.querySelector(`.tab:nth-child(${tabName === 'tests' ? 1 : tabName === 'upload' ? 2 : 3})`).classList.add('active');
+            document.getElementById(`tab-${tabName}`).classList.add('active');
+        }
+
+        // ===== CONNECTION =====
+        function toggleConnection() {
+            if (connected) {
+                disconnect();
+            } else {
+                connect();
+            }
+        }
+
+        function connect() {
+            const apiUrl = document.getElementById('apiUrl').value;
+            const token = document.getElementById('jwtToken').value.trim();
+
+            if (!token) {
+                showToast('Por favor, insira um JWT token', 'error');
+                return;
+            }
+
+            const wsUrl = apiUrl.replace('http://', 'ws://').replace('https://', 'wss://');
+            const url = `${wsUrl}/ws/status?access_token=${encodeURIComponent(token)}`;
+
+            log('Conectando ao WebSocket...', 'info');
+
+            try {
+                ws = new WebSocket(url);
+
+                ws.onopen = () => {
+                    log('✅ WebSocket conectado!', 'success');
+                    showToast('Conectado com sucesso!', 'success');
+                    updateConnectionStatus(true);
+                    updateTestResult('test-websocket', true, 'WebSocket - Conectado');
+                };
+
+                ws.onmessage = (event) => {
+                    try {
+                        const data = JSON.parse(event.data);
+                        handleWebSocketMessage(data);
+                    } catch (e) {
+                        log(`Mensagem recebida: ${event.data}`, 'info');
+                    }
+                };
+
+                ws.onerror = (error) => {
+                    log(`❌ Erro no WebSocket: ${error.message || 'Erro desconhecido'}`, 'error');
+                    metrics.errors++;
+                    updateMetrics();
+                };
+
+                ws.onclose = (event) => {
+                    log(`❌ WebSocket desconectado (código: ${event.code})`, 'error');
+                    updateConnectionStatus(false);
+                    subscriptions.clear();
+                    updateSubscriptions();
+                    ws = null;
+                };
+            } catch (error) {
+                log(`❌ Erro ao conectar: ${error.message}`, 'error');
+                showToast('Erro ao conectar', 'error');
+            }
+        }
+
+        function disconnect() {
+            if (ws) {
+                ws.close();
+                log('Desconectado pelo usuário', 'info');
+            }
+        }
+
+        function handleWebSocketMessage(data) {
+            log(`📨 Recebido: ${JSON.stringify(data).substring(0, 100)}...`, 'info');
+            metrics.received++;
+            updateMetrics();
+
+            if (data.type === 'message.status') {
+                updateMessageStatus(data);
+            } else if (data.type === 'new.message') {
+                addInboundMessage(data);
+            } else if (data.type === 'connected') {
+                log('✅ Confirmação de conexão recebida', 'success');
+            }
+        }
+
+        // ===== SUBSCRIPTIONS =====
+        function subscribe() {
+            const convId = document.getElementById('conversationId').value.trim();
+            
+            if (!convId) {
+                showToast('Informe o ID da conversa', 'error');
+                return;
+            }
+
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+                showToast('WebSocket não conectado', 'error');
+                return;
+            }
+
+            ws.send(JSON.stringify({
+                type: 'subscribe',
+                conversationId: convId
+            }));
+
+            subscriptions.add(convId);
+            currentConversation = convId;
+            updateSubscriptions();
+            log(`✅ Inscrito em: ${convId}`, 'success');
+            showToast(`Inscrito em ${convId}`, 'success');
+        }
+
+        function unsubscribe(convId) {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({
+                    type: 'unsubscribe',
+                    conversationId: convId
+                }));
+            }
+
+            subscriptions.delete(convId);
+            if (currentConversation === convId) {
+                currentConversation = subscriptions.values().next().value || null;
+            }
+            updateSubscriptions();
+            log(`❌ Desinscrito de: ${convId}`, 'info');
+        }
+
+        function unsubscribeAll() {
+            subscriptions.forEach(convId => unsubscribe(convId));
+        }
+
+        // ===== MESSAGES =====
+        async function sendMessage() {
+            const content = document.getElementById('messageInput').value.trim();
+            
+            if (!content) {
+                showToast('Digite uma mensagem', 'error');
+                return;
+            }
+
+            if (!currentConversation) {
+                showToast('Selecione uma conversa', 'error');
+                return;
+            }
+
+            const apiUrl = document.getElementById('apiUrl').value;
+            const token = document.getElementById('jwtToken').value.trim();
+            const messageId = generateUUID();
+            const startTime = Date.now();
+
+            // Adicionar mensagem local
+            addOutboundMessage(messageId, content, 'SENDING');
+            document.getElementById('messageInput').value = '';
+
+            try {
+                const response = await fetch(`${apiUrl}/api/v1/messages`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        messageId: messageId,
+                        conversationId: currentConversation,
+                        content: content
+                    })
+                });
+
+                const latency = Date.now() - startTime;
+                metrics.latencies.push(latency);
+
+                if (response.ok) {
+                    const data = await response.json();
+                    log(`✅ Mensagem enviada: ${messageId} (${latency}ms)`, 'success');
+                    updateLocalMessageStatus(messageId, 'SENT');
+                    metrics.sent++;
+                    updateMetrics();
+                    updateTestResult('test-send-message', true, `Envio de Mensagem - OK (${latency}ms)`);
+                } else {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+            } catch (error) {
+                log(`❌ Erro ao enviar: ${error.message}`, 'error');
+                updateLocalMessageStatus(messageId, 'FAILED');
+                metrics.errors++;
+                updateMetrics();
+                updateTestResult('test-send-message', false, `Envio de Mensagem - FALHOU: ${error.message}`);
+            }
+        }
+
+        function addOutboundMessage(messageId, content, status) {
+            messages.set(messageId, {
+                id: messageId,
+                conversationId: currentConversation,
+                content: content,
+                status: status,
+                direction: 'outbound',
+                timestamp: new Date()
+            });
+            renderMessages();
+        }
+
+        function addInboundMessage(data) {
+            messages.set(data.messageId, {
+                id: data.messageId,
+                conversationId: data.conversationId,
+                content: data.content,
+                status: 'RECEIVED',
+                direction: 'inbound',
+                timestamp: new Date(data.timestamp)
+            });
+            renderMessages();
+        }
+
+        function updateMessageStatus(data) {
+            const msg = messages.get(data.messageId);
+            if (msg) {
+                msg.status = data.status;
+                renderMessages();
+                log(`📊 Status atualizado: ${data.messageId} → ${data.status}`, 'success');
+                updateTestResult('test-status-update', true, `Atualização de Status - ${data.status}`);
+            }
+        }
+
+        function updateLocalMessageStatus(messageId, status) {
+            const msg = messages.get(messageId);
+            if (msg) {
+                msg.status = status;
+                renderMessages();
+            }
+        }
+
+        function renderMessages() {
+            const container = document.getElementById('messagesArea');
+            
+            if (messages.size === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">💬</div>
+                        <p>Nenhuma mensagem ainda</p>
+                    </div>
+                `;
+                return;
+            }
+
+            const sorted = Array.from(messages.values()).sort((a, b) => a.timestamp - b.timestamp);
+            
+            container.innerHTML = '';
+            sorted.forEach(msg => {
+                const div = document.createElement('div');
+                div.className = `message ${msg.direction}`;
+                div.innerHTML = `
+                    <div class="message-header">
+                        <span><strong>ID:</strong> ${msg.id.substring(0, 8)}...</span>
+                        <span>${msg.timestamp.toLocaleTimeString()}</span>
+                    </div>
+                    <div class="message-content">${escapeHtml(msg.content)}</div>
+                    ${msg.fileId ? `
+                        <div class="message-attachment">
+                            <span class="message-attachment-icon">📎</span>
+                            <span>${msg.fileName || 'Arquivo anexado'}</span>
+                        </div>
+                    ` : ''}
+                    <div class="message-status">
+                        <span class="status-badge status-${msg.status.toLowerCase()}">${msg.status}</span>
+                    </div>
+                `;
+                container.appendChild(div);
+            });
+
+            container.scrollTop = container.scrollHeight;
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // ===== FILE UPLOAD =====
+        const dropZone = document.getElementById('dropZone');
+
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.classList.add('dragover');
+        });
+
+        dropZone.addEventListener('dragleave', () => {
+            dropZone.classList.remove('dragover');
+        });
+
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('dragover');
+            handleFiles(e.dataTransfer.files);
+        });
+
+        function handleFileSelect(event) {
+            handleFiles(event.target.files);
+        }
+
+        function handleFiles(files) {
+            for (const file of files) {
+                pendingFiles.push(file);
+                displayPendingFile(file);
+            }
+            document.getElementById('uploadBtn').disabled = pendingFiles.length === 0 || !connected;
+        }
+
+        function displayPendingFile(file) {
+            const list = document.getElementById('fileList');
+            const item = document.createElement('div');
+            item.className = 'file-item';
+            item.id = `file-${file.name}`;
+            item.innerHTML = `
+                <div class="file-item-info">
+                    <span>📄</span>
+                    <div>
+                        <div>${file.name}</div>
+                        <div style="font-size: 12px; color: var(--gray-500);">${formatFileSize(file.size)}</div>
+                    </div>
+                </div>
+                <button class="btn btn-danger" onclick="removeFile('${file.name}')" style="padding: 4px 8px;">×</button>
+            `;
+            list.appendChild(item);
+        }
+
+        function removeFile(fileName) {
+            pendingFiles = pendingFiles.filter(f => f.name !== fileName);
+            document.getElementById(`file-${fileName}`)?.remove();
+            document.getElementById('uploadBtn').disabled = pendingFiles.length === 0 || !connected;
+        }
+
+        function formatFileSize(bytes) {
+            if (bytes < 1024) return bytes + ' B';
+            if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+            if (bytes < 1024 * 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+            return (bytes / (1024 * 1024 * 1024)).toFixed(2) + ' GB';
+        }
+
+        async function uploadFiles() {
+            const apiUrl = document.getElementById('apiUrl').value;
+            const token = document.getElementById('jwtToken').value.trim();
+            const convId = currentConversation || 'conv-123';
+
+            for (const file of pendingFiles) {
+                const formData = new FormData();
+                formData.append('file', file);
+                formData.append('conversationId', convId);
+
+                log(`⬆️ Enviando arquivo: ${file.name}`, 'info');
+
+                try {
+                    // Tentar Chat.Api primeiro (porta 5000)
+                    let response = await fetch(`http://localhost:5000/api/v1/files/upload`, {
+                        method: 'POST',
+                        headers: {
+                            'Authorization': `Bearer ${token}`
+                        },
+                        body: formData
+                    });
+
+                    if (response.ok) {
+                        const data = await response.json();
+                        log(`✅ Upload completo: ${file.name} → FileId: ${data.fileId}`, 'success');
+                        showToast(`Upload de ${file.name} completo!`, 'success');
+                        updateTestResult('test-file-upload', true, `Upload de Arquivo - OK`);
+
+                        // Testar presigned URL
+                        await testPresignedUrl(data.fileId, token);
+
+                        // Enviar mensagem com arquivo
+                        if (currentConversation) {
+                            await sendMessageWithFile(data.fileId, file.name);
+                        }
+                    } else {
+                        throw new Error(`HTTP ${response.status}`);
+                    }
+                } catch (error) {
+                    log(`❌ Erro no upload: ${error.message}`, 'error');
+                    showToast(`Erro no upload: ${error.message}`, 'error');
+                    updateTestResult('test-file-upload', false, `Upload de Arquivo - FALHOU`);
+                }
+            }
+
+            pendingFiles = [];
+            document.getElementById('fileList').innerHTML = '';
+            document.getElementById('uploadBtn').disabled = true;
+        }
+
+        async function testPresignedUrl(fileId, token) {
+            try {
+                const response = await fetch(`http://localhost:5000/api/v1/files/${fileId}/download-url`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    log(`✅ Presigned URL gerada: ${data.downloadUrl.substring(0, 50)}...`, 'success');
+                    updateTestResult('test-presigned-url', true, 'Presigned URL - OK');
+                } else {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+            } catch (error) {
+                log(`❌ Erro ao gerar presigned URL: ${error.message}`, 'error');
+                updateTestResult('test-presigned-url', false, 'Presigned URL - FALHOU');
+            }
+        }
+
+        async function sendMessageWithFile(fileId, fileName) {
+            const apiUrl = document.getElementById('apiUrl').value;
+            const token = document.getElementById('jwtToken').value.trim();
+            const messageId = generateUUID();
+
+            try {
+                const response = await fetch(`${apiUrl}/api/v1/messages`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        messageId: messageId,
+                        conversationId: currentConversation,
+                        content: `📎 Arquivo: ${fileName}`,
+                        fileId: fileId
+                    })
+                });
+
+                if (response.ok) {
+                    log(`✅ Mensagem com arquivo enviada: ${messageId}`, 'success');
+                    addOutboundMessage(messageId, `📎 Arquivo: ${fileName}`, 'SENT');
+                }
+            } catch (error) {
+                log(`❌ Erro ao enviar mensagem com arquivo: ${error.message}`, 'error');
+            }
+        }
+
+        // ===== TESTS =====
+        function updateTestResult(testId, passed, message) {
+            const el = document.getElementById(testId);
+            el.className = `test-result ${passed ? 'pass' : 'fail'}`;
+            el.innerHTML = `${passed ? '✅' : '❌'} ${message}`;
+        }
+
+        async function runAllTests() {
+            log('🧪 Iniciando testes automatizados...', 'info');
+            showToast('Executando testes...', 'info');
+
+            // Reset
+            document.querySelectorAll('.test-result').forEach(el => {
+                el.className = 'test-result pending';
+                el.innerHTML = '⏳ ' + el.innerHTML.split(' - ')[0].replace(/[✅❌⏳]/g, '').trim() + ' - Executando...';
+            });
+
+            // Test 1: WebSocket
+            if (connected) {
+                updateTestResult('test-websocket', true, 'WebSocket - Conectado');
+            } else {
+                updateTestResult('test-websocket', false, 'WebSocket - Não conectado');
+            }
+
+            // Test 2: Send Message
+            if (currentConversation && connected) {
+                const testMsgId = generateUUID();
+                try {
+                    const apiUrl = document.getElementById('apiUrl').value;
+                    const token = document.getElementById('jwtToken').value.trim();
+                    
+                    const response = await fetch(`${apiUrl}/api/v1/messages`, {
+                        method: 'POST',
+                        headers: {
+                            'Authorization': `Bearer ${token}`,
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            messageId: testMsgId,
+                            conversationId: currentConversation,
+                            content: '[TEST] Mensagem automática de teste'
+                        })
+                    });
+
+                    if (response.ok) {
+                        updateTestResult('test-send-message', true, 'Envio de Mensagem - OK');
+                        addOutboundMessage(testMsgId, '[TEST] Mensagem automática de teste', 'SENT');
+                    } else {
+                        updateTestResult('test-send-message', false, 'Envio de Mensagem - HTTP ' + response.status);
+                    }
+                } catch (e) {
+                    updateTestResult('test-send-message', false, 'Envio de Mensagem - ' + e.message);
+                }
+            } else {
+                updateTestResult('test-send-message', false, 'Envio de Mensagem - Não conectado/inscrito');
+            }
+
+            // Test 3: Status Update (aguardar 3s para status chegar via WebSocket)
+            setTimeout(() => {
+                const hasStatusUpdate = Array.from(messages.values()).some(m => 
+                    m.status === 'DELIVERED' || m.status === 'READ'
+                );
+                if (hasStatusUpdate) {
+                    updateTestResult('test-status-update', true, 'Atualização de Status - Recebida');
+                }
+            }, 3000);
+
+            // Test 4 & 5: File Upload (feito no uploadFiles)
+            
+            // Test 6: Connector Mock
+            await testConnectorMock();
+
+            log('🧪 Testes concluídos!', 'success');
+            showToast('Testes finalizados!', 'success');
+        }
+
+        async function testConnectorMock() {
+            try {
+                // Verificar se connector está respondendo
+                const response = await fetch('http://localhost:7010/swagger/index.html', { method: 'HEAD' });
+                updateTestResult('test-connector', true, 'Connector Mock - Ativo');
+            } catch (e) {
+                // Tentar via logs
+                updateTestResult('test-connector', false, 'Connector Mock - Verificar logs');
+            }
+        }
+
+        // ===== QUICK ACTIONS =====
+        async function checkHealth() {
+            log('🏥 Verificando saúde dos serviços...', 'info');
+            
+            const services = [
+                { name: 'Chat.Frontend', url: 'http://localhost:8080/health' },
+                { name: 'Chat.Api', url: 'http://localhost:5000/health' },
+            ];
+
+            for (const service of services) {
+                try {
+                    const response = await fetch(service.url);
+                    if (response.ok) {
+                        log(`✅ ${service.name}: Saudável`, 'success');
+                    } else {
+                        log(`⚠️ ${service.name}: HTTP ${response.status}`, 'warning');
+                    }
+                } catch (e) {
+                    log(`❌ ${service.name}: Não acessível`, 'error');
+                }
+            }
+        }
+
+        async function simulateLoad() {
+            if (!currentConversation || !connected) {
+                showToast('Conecte e inscreva-se em uma conversa primeiro', 'error');
+                return;
+            }
+
+            log('🔥 Iniciando simulação de carga (10 mensagens)...', 'warning');
+            showToast('Enviando 10 mensagens...', 'info');
+
+            const apiUrl = document.getElementById('apiUrl').value;
+            const token = document.getElementById('jwtToken').value.trim();
+
+            for (let i = 1; i <= 10; i++) {
+                const messageId = generateUUID();
+                const content = `[LOAD TEST] Mensagem ${i}/10 - ${new Date().toISOString()}`;
+
+                try {
+                    await fetch(`${apiUrl}/api/v1/messages`, {
+                        method: 'POST',
+                        headers: {
+                            'Authorization': `Bearer ${token}`,
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            messageId: messageId,
+                            conversationId: currentConversation,
+                            content: content
+                        })
+                    });
+
+                    addOutboundMessage(messageId, content, 'SENT');
+                    metrics.sent++;
+                    updateMetrics();
+                    
+                    // Pequeno delay entre mensagens
+                    await new Promise(r => setTimeout(r, 100));
+                } catch (e) {
+                    log(`❌ Erro na mensagem ${i}: ${e.message}`, 'error');
+                    metrics.errors++;
+                    updateMetrics();
+                }
+            }
+
+            log('✅ Simulação de carga concluída!', 'success');
+            showToast('Carga simulada com sucesso!', 'success');
+        }
+
+        async function testFullFlow() {
+            log('🔄 Iniciando teste de fluxo completo...', 'info');
+            showToast('Testando fluxo completo...', 'info');
+
+            // 1. Verificar conexão
+            if (!connected) {
+                log('❌ WebSocket não conectado', 'error');
+                return;
+            }
+            log('✅ 1/5 WebSocket conectado', 'success');
+
+            // 2. Verificar inscrição
+            if (!currentConversation) {
+                log('❌ Não inscrito em nenhuma conversa', 'error');
+                return;
+            }
+            log('✅ 2/5 Inscrito em conversa: ' + currentConversation, 'success');
+
+            // 3. Enviar mensagem
+            const messageId = generateUUID();
+            const apiUrl = document.getElementById('apiUrl').value;
+            const token = document.getElementById('jwtToken').value.trim();
+
+            try {
+                const response = await fetch(`${apiUrl}/api/v1/messages`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        messageId: messageId,
+                        conversationId: currentConversation,
+                        content: '[FLOW TEST] Teste de fluxo completo'
+                    })
+                });
+
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                log('✅ 3/5 Mensagem enviada: ' + messageId.substring(0, 8), 'success');
+                addOutboundMessage(messageId, '[FLOW TEST] Teste de fluxo completo', 'SENT');
+            } catch (e) {
+                log('❌ 3/5 Erro ao enviar: ' + e.message, 'error');
+                return;
+            }
+
+            // 4. Aguardar processamento (3 segundos)
+            log('⏳ 4/5 Aguardando processamento (3s)...', 'info');
+            await new Promise(r => setTimeout(r, 3000));
+
+            // 5. Verificar status
+            const msg = messages.get(messageId);
+            if (msg && (msg.status === 'DELIVERED' || msg.status === 'READ')) {
+                log('✅ 5/5 Status atualizado: ' + msg.status, 'success');
+                showToast('Fluxo completo OK!', 'success');
+            } else {
+                log('⚠️ 5/5 Status ainda SENT (verificar logs do backend)', 'warning');
+                showToast('Fluxo parcial - verificar backend', 'info');
+            }
+        }
+
+        function openGrafana() {
+            window.open('http://localhost:3000', '_blank');
+        }
+
+        function clearLogs() {
+            document.getElementById('logContainer').innerHTML = '<div class="log-entry">Logs limpos.</div>';
+        }
+
+        // ===== INITIALIZATION =====
+        document.addEventListener('DOMContentLoaded', () => {
+            // Enter to send
+            document.getElementById('messageInput').addEventListener('keypress', (e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    sendMessage();
+                }
+            });
+
+            // Check API on load
+            checkHealth();
+
+            log('✨ Sistema pronto! Cole seu JWT token e conecte.', 'info');
+        });
+    </script>
+</body>
+</html>

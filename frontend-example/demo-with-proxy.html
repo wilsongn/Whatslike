@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Chat Status WebSocket - Demo (via Chat.Frontend)</title>
+    <title>Chat WebSocket - Demo Completa</title>
     <style>
         * {
             margin: 0;
@@ -12,92 +12,105 @@
         }
 
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-            background: #f5f5f5;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
             padding: 20px;
         }
 
         .container {
-            max-width: 1200px;
+            max-width: 1400px;
             margin: 0 auto;
             background: white;
-            border-radius: 8px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
             overflow: hidden;
         }
 
         .header {
-            background: #007bff;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
-            padding: 20px;
+            padding: 30px;
+            text-align: center;
         }
 
-        .header h1 {
-            font-size: 24px;
-            margin-bottom: 5px;
-        }
+            .header h1 {
+                font-size: 32px;
+                margin-bottom: 10px;
+            }
 
-        .header p {
-            opacity: 0.9;
-            font-size: 14px;
-        }
-
-        .architecture-note {
-            background: #fff3cd;
-            border-left: 4px solid #ffc107;
-            padding: 12px 15px;
-            margin: 15px 20px;
-            border-radius: 4px;
-        }
-
-        .architecture-note strong {
-            color: #856404;
-        }
+            .header p {
+                opacity: 0.9;
+                font-size: 16px;
+            }
 
         .connection-status {
-            padding: 15px 20px;
+            padding: 20px;
             background: #f8f9fa;
-            border-bottom: 1px solid #dee2e6;
+            border-bottom: 2px solid #dee2e6;
             display: flex;
             align-items: center;
-            gap: 10px;
+            justify-content: space-between;
         }
 
         .status-indicator {
-            width: 12px;
-            height: 12px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-weight: 600;
+        }
+
+        .status-dot {
+            width: 14px;
+            height: 14px;
             border-radius: 50%;
             background: #dc3545;
             animation: pulse 2s infinite;
         }
 
-        .status-indicator.connected {
-            background: #28a745;
-        }
+            .status-dot.connected {
+                background: #28a745;
+            }
 
         @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.5; }
+            0%, 100% {
+                opacity: 1;
+            }
+
+            50% {
+                opacity: 0.5;
+            }
         }
 
         .main-content {
             display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 20px;
+            grid-template-columns: 350px 1fr;
+            gap: 0;
+            min-height: 600px;
+        }
+
+        .sidebar {
+            background: #f8f9fa;
+            border-right: 2px solid #dee2e6;
             padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
         }
 
         .panel {
+            background: white;
             border: 1px solid #dee2e6;
-            border-radius: 4px;
+            border-radius: 8px;
             overflow: hidden;
         }
 
         .panel-header {
-            background: #f8f9fa;
+            background: #667eea;
+            color: white;
             padding: 12px 15px;
-            border-bottom: 1px solid #dee2e6;
             font-weight: 600;
+            font-size: 14px;
         }
 
         .panel-body {
@@ -108,128 +121,201 @@
             margin-bottom: 15px;
         }
 
-        label {
-            display: block;
-            margin-bottom: 5px;
-            font-weight: 500;
-            font-size: 14px;
-        }
+            .form-group label {
+                display: block;
+                margin-bottom: 5px;
+                font-weight: 500;
+                font-size: 13px;
+                color: #495057;
+            }
 
-        input, textarea, select {
-            width: 100%;
-            padding: 8px 12px;
-            border: 1px solid #ced4da;
-            border-radius: 4px;
-            font-size: 14px;
-        }
+            .form-group input,
+            .form-group textarea {
+                width: 100%;
+                padding: 10px;
+                border: 1px solid #ced4da;
+                border-radius: 4px;
+                font-size: 14px;
+                font-family: inherit;
+            }
 
-        textarea {
-            min-height: 60px;
-            resize: vertical;
-        }
+            .form-group textarea {
+                resize: vertical;
+                min-height: 80px;
+            }
 
         button {
-            background: #007bff;
-            color: white;
+            width: 100%;
+            padding: 12px;
             border: none;
-            padding: 10px 20px;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 14px;
-            font-weight: 500;
-        }
-
-        button:hover {
-            background: #0056b3;
-        }
-
-        button:disabled {
-            background: #6c757d;
-            cursor: not-allowed;
-        }
-
-        button.danger {
-            background: #dc3545;
-        }
-
-        button.danger:hover {
-            background: #c82333;
-        }
-
-        .events-log {
-            height: 400px;
-            overflow-y: auto;
-            background: #f8f9fa;
-            border: 1px solid #dee2e6;
-            border-radius: 4px;
-            padding: 10px;
-            font-family: 'Courier New', monospace;
-            font-size: 12px;
-        }
-
-        .event-item {
-            margin-bottom: 8px;
-            padding: 8px;
-            background: white;
-            border-radius: 3px;
-            border-left: 3px solid #007bff;
-        }
-
-        .event-item.status {
-            border-left-color: #28a745;
-        }
-
-        .event-item.error {
-            border-left-color: #dc3545;
-        }
-
-        .event-time {
-            color: #6c757d;
-            font-size: 11px;
-        }
-
-        .event-type {
+            border-radius: 6px;
             font-weight: 600;
-            color: #007bff;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.3s;
         }
 
-        .messages-list {
+            button:disabled {
+                opacity: 0.5;
+                cursor: not-allowed;
+            }
+
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+
+            .btn-primary:hover:not(:disabled) {
+                background: #5568d3;
+                transform: translateY(-2px);
+                box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+            }
+
+        .btn-success {
+            background: #28a745;
+            color: white;
+        }
+
+            .btn-success:hover:not(:disabled) {
+                background: #218838;
+            }
+
+        .btn-danger {
+            background: #dc3545;
+            color: white;
+        }
+
+            .btn-danger:hover:not(:disabled) {
+                background: #c82333;
+            }
+
+        .chat-area {
             display: flex;
             flex-direction: column;
-            gap: 10px;
+            height: 600px;
         }
 
-        .message-item {
-            padding: 12px;
+        .messages-container {
+            flex: 1;
+            padding: 20px;
+            overflow-y: auto;
             background: #f8f9fa;
-            border-radius: 4px;
-            border-left: 3px solid #007bff;
+        }
+
+        .message {
+            margin-bottom: 15px;
+            padding: 12px 15px;
+            border-radius: 8px;
+            background: white;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
         }
 
         .message-header {
             display: flex;
             justify-content: space-between;
-            margin-bottom: 5px;
+            margin-bottom: 8px;
+            font-size: 12px;
+            color: #6c757d;
         }
 
-        .message-id {
-            font-family: 'Courier New', monospace;
+        .message-content {
+            color: #212529;
+            font-size: 14px;
+            line-height: 1.5;
+        }
+
+        .message-status {
+            margin-top: 8px;
+            padding-top: 8px;
+            border-top: 1px solid #e9ecef;
             font-size: 11px;
             color: #6c757d;
         }
 
-        .message-status {
-            font-size: 11px;
+        .status-badge {
+            display: inline-block;
+            padding: 3px 8px;
+            border-radius: 12px;
+            font-size: 10px;
             font-weight: 600;
-            padding: 2px 8px;
-            border-radius: 3px;
-            background: #6c757d;
-            color: white;
+            text-transform: uppercase;
+            margin-left: 5px;
         }
 
-        .status-sent { background: #ffc107; color: #000; }
-        .status-delivered { background: #17a2b8; }
-        .status-read { background: #28a745; }
+        .status-sent {
+            background: #fff3cd;
+            color: #856404;
+        }
+
+        .status-delivered {
+            background: #d1ecf1;
+            color: #0c5460;
+        }
+
+        .status-read {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .send-area {
+            padding: 20px;
+            background: white;
+            border-top: 2px solid #dee2e6;
+        }
+
+        .send-form {
+            display: flex;
+            gap: 10px;
+        }
+
+            .send-form input {
+                flex: 1;
+                padding: 12px;
+                border: 1px solid #ced4da;
+                border-radius: 6px;
+                font-size: 14px;
+            }
+
+            .send-form button {
+                width: auto;
+                padding: 12px 30px;
+            }
+
+        .log-container {
+            max-height: 200px;
+            overflow-y: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            background: #f8f9fa;
+            padding: 10px;
+            border-radius: 4px;
+        }
+
+        .log-entry {
+            padding: 4px 0;
+            border-bottom: 1px solid #e9ecef;
+        }
+
+            .log-entry:last-child {
+                border-bottom: none;
+            }
+
+        .log-time {
+            color: #6c757d;
+            margin-right: 8px;
+        }
+
+        .log-info {
+            color: #0c5460;
+        }
+
+        .log-success {
+            color: #155724;
+        }
+
+        .log-error {
+            color: #721c24;
+        }
 
         .subscriptions {
             display: flex;
@@ -239,107 +325,194 @@
         }
 
         .subscription-badge {
-            padding: 4px 12px;
-            background: #007bff;
+            padding: 6px 12px;
+            background: #667eea;
             color: white;
-            border-radius: 12px;
+            border-radius: 16px;
             font-size: 12px;
             display: flex;
             align-items: center;
             gap: 8px;
         }
 
-        .subscription-badge button {
-            background: transparent;
-            border: none;
-            color: white;
-            padding: 0;
-            cursor: pointer;
-            font-size: 16px;
-            line-height: 1;
+            .subscription-badge button {
+                width: auto;
+                padding: 2px 8px;
+                font-size: 10px;
+                background: rgba(255,255,255,0.3);
+                color: white;
+            }
+
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: #6c757d;
+        }
+
+        .empty-state-icon {
+            font-size: 48px;
+            margin-bottom: 16px;
+            opacity: 0.5;
         }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="header">
-            <h1>🔌 Chat Status WebSocket - Demo</h1>
-            <p>Sistema de notificação em tempo real via Chat.Frontend (Proxy)</p>
-        </div>
-
-        <div class="architecture-note">
-            <strong>ℹ️ Arquitetura:</strong> Este frontend conecta no <strong>Chat.Frontend</strong> (porta 8080), 
-            que faz proxy da conexão para o <strong>Chat.Api</strong> (porta 5000). 
-            Todas as mensagens são encaminhadas de forma transparente.
+            <h1>🚀 Chat WebSocket - Demo Completa</h1>
+            <p>Envie e receba mensagens em tempo real via WebSocket</p>
         </div>
 
         <div class="connection-status">
-            <div class="status-indicator" id="statusIndicator"></div>
-            <span id="statusText">Desconectado</span>
+            <div class="status-indicator">
+                <div class="status-dot" id="statusDot"></div>
+                <span id="statusText">Desconectado</span>
+            </div>
+            <div id="subscriptionsDisplay" class="subscriptions"></div>
         </div>
 
         <div class="main-content">
-            <!-- Painel de Configuração -->
-            <div class="panel">
-                <div class="panel-header">⚙️ Configuração</div>
-                <div class="panel-body">
-                    <div class="form-group">
-                        <label>Chat.Frontend URL</label>
-                        <input type="text" id="apiUrl" value="http://localhost:8080" />
-                        <small style="color: #6c757d; font-size: 11px;">
-                            Conecta no Chat.Frontend (proxy) que encaminha para Chat.Api
-                        </small>
+            <!-- Sidebar -->
+            <div class="sidebar">
+                <!-- Conexão -->
+                <div class="panel">
+                    <div class="panel-header">🔌 Conexão</div>
+                    <div class="panel-body">
+                        <div class="form-group">
+                            <label>URL da API</label>
+                            <input type="text" id="apiUrl" value="http://localhost:8080" placeholder="http://localhost:8080">
+                        </div>
+                        <div class="form-group">
+                            <label>JWT Token</label>
+                            <textarea id="jwtToken" placeholder="Cole seu JWT token aqui"></textarea>
+                        </div>
+                        <button class="btn-primary" id="connectBtn" onclick="toggleConnection()">
+                            Conectar
+                        </button>
                     </div>
-                    <div class="form-group">
-                        <label>JWT Token</label>
-                        <textarea id="jwtToken" placeholder="Cole seu token JWT aqui"></textarea>
+                </div>
+
+                <!-- Inscrição -->
+                <div class="panel">
+                    <div class="panel-header">📬 Inscrever em Conversa</div>
+                    <div class="panel-body">
+                        <div class="form-group">
+                            <label>Conversation ID</label>
+                            <input type="text" id="conversationId" placeholder="ex: conv-123">
+                        </div>
+                        <button class="btn-success" id="subscribeBtn" onclick="subscribe()" disabled>
+                            Inscrever
+                        </button>
                     </div>
-                    <button id="connectBtn" onclick="handleConnect()">Conectar</button>
-                    <button id="disconnectBtn" onclick="handleDisconnect()" disabled class="danger">Desconectar</button>
+                </div>
 
-                    <hr style="margin: 20px 0;">
-
-                    <div class="form-group">
-                        <label>Conversation ID para inscrever</label>
-                        <input type="text" id="conversationId" placeholder="UUID da conversa" />
+                <!-- Log -->
+                <div class="panel">
+                    <div class="panel-header">📝 Log de Eventos</div>
+                    <div class="panel-body">
+                        <div class="log-container" id="logContainer"></div>
                     </div>
-                    <button onclick="handleSubscribe()" id="subscribeBtn" disabled>Inscrever</button>
-
-                    <div class="subscriptions" id="subscriptionsList"></div>
                 </div>
             </div>
 
-            <!-- Painel de Eventos -->
-            <div class="panel">
-                <div class="panel-header">
-                    📡 Log de Eventos
-                    <button onclick="clearEvents()" style="float: right; padding: 4px 12px; font-size: 12px;">Limpar</button>
+            <!-- Chat Area -->
+            <div class="chat-area">
+                <div class="messages-container" id="messagesContainer">
+                    <div class="empty-state">
+                        <div class="empty-state-icon">💬</div>
+                        <p>Conecte-se e inscreva-se em uma conversa para começar</p>
+                    </div>
                 </div>
-                <div class="panel-body">
-                    <div class="events-log" id="eventsLog"></div>
-                </div>
-            </div>
-
-            <!-- Painel de Mensagens -->
-            <div class="panel" style="grid-column: span 2;">
-                <div class="panel-header">💬 Mensagens Simuladas</div>
-                <div class="panel-body">
-                    <div id="messagesList" class="messages-list">
-                        <p style="color: #6c757d; text-align: center;">
-                            As mensagens aparecerão aqui quando os status forem atualizados
-                        </p>
+                <div class="send-area">
+                    <div class="send-form">
+                        <input type="text" id="messageInput" placeholder="Digite sua mensagem..." disabled>
+                        <button class="btn-primary" id="sendBtn" onclick="sendMessage()" disabled>
+                            Enviar
+                        </button>
                     </div>
                 </div>
             </div>
         </div>
     </div>
 
-    <script src="websocket-client.js"></script>
     <script>
-        let client = null;
-        const messages = new Map();
+        let ws = null;
+        let subscribedConversations = new Set();
+        let messages = new Map(); // messageId -> message object
+        let currentConversation = null;
 
-        function handleConnect() {
+        function log(message, type = 'info') {
+            const logContainer = document.getElementById('logContainer');
+            const time = new Date().toLocaleTimeString();
+            const entry = document.createElement('div');
+            entry.className = `log-entry log-${type}`;
+            entry.innerHTML = `<span class="log-time">${time}</span>${message}`;
+            logContainer.appendChild(entry);
+            logContainer.scrollTop = logContainer.scrollHeight;
+        }
+
+        function updateStatus(connected) {
+            const dot = document.getElementById('statusDot');
+            const text = document.getElementById('statusText');
+            const connectBtn = document.getElementById('connectBtn');
+            const subscribeBtn = document.getElementById('subscribeBtn');
+            const messageInput = document.getElementById('messageInput');
+            const sendBtn = document.getElementById('sendBtn');
+
+            if (connected) {
+                dot.classList.add('connected');
+                text.textContent = 'Conectado';
+                connectBtn.textContent = 'Desconectar';
+                connectBtn.className = 'btn-danger';
+                subscribeBtn.disabled = false;
+            } else {
+                dot.classList.remove('connected');
+                text.textContent = 'Desconectado';
+                connectBtn.textContent = 'Conectar';
+                connectBtn.className = 'btn-primary';
+                subscribeBtn.disabled = true;
+                messageInput.disabled = true;
+                sendBtn.disabled = true;
+            }
+        }
+
+        function updateSubscriptionsDisplay() {
+            const display = document.getElementById('subscriptionsDisplay');
+            const messageInput = document.getElementById('messageInput');
+            const sendBtn = document.getElementById('sendBtn');
+
+            if (subscribedConversations.size === 0) {
+                display.innerHTML = '';
+                messageInput.disabled = true;
+                sendBtn.disabled = true;
+                return;
+            }
+
+            display.innerHTML = '';
+            subscribedConversations.forEach(convId => {
+                const badge = document.createElement('div');
+                badge.className = 'subscription-badge';
+                badge.innerHTML = `
+                        ${convId}
+                        <button onclick="unsubscribe('${convId}')">×</button>
+                    `;
+                display.appendChild(badge);
+            });
+
+            messageInput.disabled = false;
+            sendBtn.disabled = false;
+        }
+
+        function toggleConnection() {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.close();
+                log('Desconectando...', 'info');
+            } else {
+                connect();
+            }
+        }
+
+        function connect() {
             const apiUrl = document.getElementById('apiUrl').value;
             const token = document.getElementById('jwtToken').value.trim();
 
@@ -348,125 +521,62 @@
                 return;
             }
 
-            logEvent('info', `Conectando ao Chat.Frontend: ${apiUrl}`);
-            client = new ChatStatusClient(apiUrl, token);
+            const wsUrl = apiUrl.replace('http://', 'ws://').replace('https://', 'wss://');
+            const url = `${wsUrl}/ws/status?access_token=${encodeURIComponent(token)}`;
 
-            // Registrar handlers
-            client.on('connected', (data) => {
+            log('Conectando...', 'info');
+            ws = new WebSocket(url);
+
+            ws.onopen = () => {
+                log('✅ CONECTADO', 'success');
                 updateStatus(true);
-                logEvent('connected', 'Conectado ao WebSocket (via Chat.Frontend proxy)', data);
-                document.getElementById('subscribeBtn').disabled = false;
-            });
+            };
 
-            client.on('disconnected', (data) => {
+            ws.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    handleWebSocketMessage(data);
+                } catch (error) {
+                    log(`Erro ao parsear mensagem: ${error.message}`, 'error');
+                }
+            };
+
+            ws.onerror = (error) => {
+                log(`❌ ERRO: ${error.message || 'Erro no WebSocket'}`, 'error');
+                console.error('WebSocket error:', error);
+            };
+
+            ws.onclose = (event) => {
+                log(`❌ DESCONECTADO (código: ${event.code})`, 'error');
                 updateStatus(false);
-                logEvent('error', 'Desconectado', data);
-                document.getElementById('subscribeBtn').disabled = true;
-            });
-
-            client.on('subscribed', (data) => {
-                logEvent('status', `Inscrito na conversa: ${data.conversationId}`, data);
-                updateSubscriptionsList();
-            });
-
-            client.on('unsubscribed', (data) => {
-                logEvent('status', `Desinscrito da conversa: ${data.conversationId}`, data);
-                updateSubscriptionsList();
-            });
-
-            client.on('message.status', (data) => {
-                logEvent('status', `Status atualizado: ${data.status} para msg ${data.messageId.substring(0, 8)}...`, data);
-                updateMessageStatus(data);
-            });
-
-            client.on('error', (error) => {
-                logEvent('error', 'Erro no WebSocket', error);
-            });
-
-            client.connect();
-            client.startPing(30000);
-
-            document.getElementById('connectBtn').disabled = true;
-            document.getElementById('disconnectBtn').disabled = false;
+                subscribedConversations.clear();
+                updateSubscriptionsDisplay();
+                ws = null;
+            };
         }
 
-        function handleDisconnect() {
-            if (client) {
-                client.disconnect();
-                client = null;
-            }
-            updateStatus(false);
-            document.getElementById('connectBtn').disabled = false;
-            document.getElementById('disconnectBtn').disabled = true;
-            document.getElementById('subscribeBtn').disabled = true;
-        }
+        function handleWebSocketMessage(data) {
+            log(`📨 Recebido: ${data.type}`, 'info');
 
-        function handleSubscribe() {
-            const conversationId = document.getElementById('conversationId').value.trim();
-            if (!conversationId) {
-                alert('Por favor, insira um Conversation ID');
-                return;
-            }
-
-            if (client) {
-                client.subscribe(conversationId);
+            if (data.type === 'message.status') {
+                handleStatusUpdate(data);
             }
         }
 
-        function handleUnsubscribe(conversationId) {
-            if (client) {
-                client.unsubscribe(conversationId);
-            }
-        }
+        function handleStatusUpdate(data) {
+            const messageId = data.messageId;
+            const status = data.status;
 
-        function updateStatus(connected) {
-            const indicator = document.getElementById('statusIndicator');
-            const text = document.getElementById('statusText');
-            
-            if (connected) {
-                indicator.classList.add('connected');
-                text.textContent = 'Conectado (via Chat.Frontend)';
-            } else {
-                indicator.classList.remove('connected');
-                text.textContent = 'Desconectado';
-            }
-        }
+            log(`Status atualizado: ${messageId} → ${status}`, 'success');
 
-        function logEvent(type, message, data = null) {
-            const log = document.getElementById('eventsLog');
-            const eventDiv = document.createElement('div');
-            eventDiv.className = `event-item ${type}`;
-            
-            const time = new Date().toLocaleTimeString();
-            eventDiv.innerHTML = `
-                <div class="event-time">${time}</div>
-                <div class="event-type">${type.toUpperCase()}</div>
-                <div>${message}</div>
-                ${data ? `<pre style="margin-top: 5px; font-size: 11px;">${JSON.stringify(data, null, 2)}</pre>` : ''}
-            `;
-            
-            log.insertBefore(eventDiv, log.firstChild);
-            
-            // Limitar a 50 eventos
-            while (log.children.length > 50) {
-                log.removeChild(log.lastChild);
-            }
-        }
-
-        function clearEvents() {
-            document.getElementById('eventsLog').innerHTML = '';
-        }
-
-        function updateMessageStatus(data) {
-            const { messageId, status, conversationId, channel } = data;
-            
+            // Atualizar ou criar mensagem
             if (!messages.has(messageId)) {
                 messages.set(messageId, {
                     id: messageId,
-                    conversationId,
-                    channel,
+                    conversationId: data.conversationId,
+                    content: data.content || '(mensagem externa)',
                     status: status,
-                    timestamp: new Date()
+                    timestamp: new Date(data.timestamp)
                 });
             } else {
                 const msg = messages.get(messageId);
@@ -476,44 +586,170 @@
             renderMessages();
         }
 
+        function subscribe() {
+            const convId = document.getElementById('conversationId').value.trim();
+
+            if (!convId) {
+                alert('Por favor, insira um Conversation ID');
+                return;
+            }
+
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+                alert('WebSocket não está conectado');
+                return;
+            }
+
+            const message = {
+                type: 'subscribe',
+                conversationId: convId
+            };
+
+            ws.send(JSON.stringify(message));
+            subscribedConversations.add(convId);
+            currentConversation = convId;
+            updateSubscriptionsDisplay();
+            log(`✅ Inscrito em: ${convId}`, 'success');
+        }
+
+        function unsubscribe(convId) {
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+                return;
+            }
+
+            const message = {
+                type: 'unsubscribe',
+                conversationId: convId
+            };
+
+            ws.send(JSON.stringify(message));
+            subscribedConversations.delete(convId);
+            if (currentConversation === convId) {
+                currentConversation = subscribedConversations.values().next().value || null;
+            }
+            updateSubscriptionsDisplay();
+            log(`❌ Desinscrito de: ${convId}`, 'info');
+        }
+
+        async function sendMessage() {
+            const content = document.getElementById('messageInput').value.trim();
+
+            if (!content) {
+                alert('Digite uma mensagem');
+                return;
+            }
+
+            if (!currentConversation) {
+                alert('Inscreva-se em uma conversa primeiro');
+                return;
+            }
+
+            const apiUrl = document.getElementById('apiUrl').value;
+            const token = document.getElementById('jwtToken').value.trim();
+            const messageId = generateUUID();
+
+            // Adicionar mensagem localmente
+            messages.set(messageId, {
+                id: messageId,
+                conversationId: currentConversation,
+                content: content,
+                status: 'SENDING',
+                timestamp: new Date()
+            });
+            renderMessages();
+
+            // Enviar via API REST
+            try {
+                const response = await fetch(`${apiUrl}/api/v1/messages`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        messageId: messageId,
+                        conversationId: currentConversation,
+                        content: content
+                    })
+                });
+
+                if (response.ok) {
+                    log(`✅ Mensagem enviada: ${messageId}`, 'success');
+                    document.getElementById('messageInput').value = '';
+                } else {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+            } catch (error) {
+                log(`❌ Erro ao enviar: ${error.message}`, 'error');
+                messages.delete(messageId);
+                renderMessages();
+            }
+        }
+
         function renderMessages() {
-            const container = document.getElementById('messagesList');
+            const container = document.getElementById('messagesContainer');
+
+            if (messages.size === 0) {
+                container.innerHTML = `
+                        <div class="empty-state">
+                            <div class="empty-state-icon">💬</div>
+                            <p>Nenhuma mensagem ainda. Envie uma mensagem para começar!</p>
+                        </div>
+                    `;
+                return;
+            }
+
             const sortedMessages = Array.from(messages.values())
-                .sort((a, b) => b.timestamp - a.timestamp);
+                .sort((a, b) => a.timestamp - b.timestamp);
 
-            if (sortedMessages.length === 0) {
-                container.innerHTML = '<p style="color: #6c757d; text-align: center;">Nenhuma mensagem ainda</p>';
-                return;
-            }
+            container.innerHTML = '';
+            sortedMessages.forEach(msg => {
+                const messageDiv = document.createElement('div');
+                messageDiv.className = 'message';
+                messageDiv.innerHTML = `
+                        <div class="message-header">
+                            <span><strong>ID:</strong> ${msg.id.substring(0, 8)}...</span>
+                            <span><strong>Conversa:</strong> ${msg.conversationId}</span>
+                        </div>
+                        <div class="message-content">${escapeHtml(msg.content)}</div>
+                        <div class="message-status">
+                            <strong>Status:</strong>
+                            <span class="status-badge status-${msg.status.toLowerCase()}">${msg.status}</span>
+                            <span style="margin-left: 10px; color: #6c757d;">
+                                ${msg.timestamp.toLocaleTimeString()}
+                            </span>
+                        </div>
+                    `;
+                container.appendChild(messageDiv);
+            });
 
-            container.innerHTML = sortedMessages.map(msg => `
-                <div class="message-item">
-                    <div class="message-header">
-                        <span class="message-id">ID: ${msg.id}</span>
-                        <span class="message-status status-${msg.status.toLowerCase()}">${msg.status}</span>
-                    </div>
-                    <div style="font-size: 12px; color: #6c757d;">
-                        Conversa: ${msg.conversationId} | Canal: ${msg.channel}
-                    </div>
-                </div>
-            `).join('');
+            container.scrollTop = container.scrollHeight;
         }
 
-        function updateSubscriptionsList() {
-            const container = document.getElementById('subscriptionsList');
-            
-            if (!client || client.subscriptions.size === 0) {
-                container.innerHTML = '';
-                return;
-            }
-
-            container.innerHTML = Array.from(client.subscriptions).map(id => `
-                <div class="subscription-badge">
-                    ${id.substring(0, 8)}...
-                    <button onclick="handleUnsubscribe('${id}')" title="Desinscrever">×</button>
-                </div>
-            `).join('');
+        function generateUUID() {
+            return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
+                var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
+                return v.toString(16);
+            });
         }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // Permitir enviar com Enter
+        document.addEventListener('DOMContentLoaded', () => {
+            document.getElementById('messageInput').addEventListener('keypress', (e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    sendMessage();
+                }
+            });
+        });
+
+        // Log inicial
+        log('Sistema iniciado. Configure e conecte para começar.', 'info');
     </script>
 </body>
 </html>

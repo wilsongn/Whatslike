@@ -72,9 +72,9 @@ builder.Services.AddSwaggerGen();
 // ============================================
 builder.Services.AddSingleton<IProducer<string, string>>(sp =>
 {
-    var kafkaServers = builder.Configuration["Kafka:BootstrapServers"] ??
-                       Environment.GetEnvironmentVariable("KAFKA_BOOTSTRAP_SERVERS") ??
-                       "localhost:9092";
+    var kafkaServers = Environment.GetEnvironmentVariable("KAFKA_BOOTSTRAP_SERVERS") ??
+                   builder.Configuration["Kafka:BootstrapServers"] ??
+                   "localhost:9092";
 
     var config = new ProducerConfig
     {
@@ -114,9 +114,9 @@ builder.Services.AddSingleton<IProducer<string, string>>(sp =>
 // ============================================
 builder.Services.AddStackExchangeRedisCache(options =>
 {
-    var redisConnection = builder.Configuration["Redis:ConnectionString"] ??
-                          Environment.GetEnvironmentVariable("REDIS_CONNECTION_STRING") ??
-                          "localhost:6379";
+    var redisConnection = Environment.GetEnvironmentVariable("REDIS_CONNECTION_STRING") ??
+                      builder.Configuration["Redis:ConnectionString"] ??
+                      "localhost:6379";
 
     options.Configuration = redisConnection;
     options.InstanceName = "ChatFrontend:";

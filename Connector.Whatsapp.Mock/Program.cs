@@ -7,7 +7,9 @@ var builder = WebApplication.CreateBuilder(args);
 
 // ===== Config =====
 const string ChannelName = "whatsapp";
-string kafkaBootstrap = Environment.GetEnvironmentVariable("KAFKA_BOOTSTRAP") ?? "localhost:9092";
+string kafkaBootstrap = Environment.GetEnvironmentVariable("KAFKA_BOOTSTRAP_SERVERS") ??
+                        Environment.GetEnvironmentVariable("KAFKA_BOOTSTRAP") ??
+                        "kafka:9092";
 string groupId = Environment.GetEnvironmentVariable("GROUP_ID") ?? $"connector-{ChannelName}-mock";
 string topicOut = Environment.GetEnvironmentVariable("TOPIC_OUT") ?? $"msg.out.{ChannelName}";
 string topicIn = Environment.GetEnvironmentVariable("TOPIC_IN") ?? $"msg.in.{ChannelName}";

@@ -5,7 +5,9 @@ using StackExchange.Redis;
 var builder = Host.CreateApplicationBuilder(args);
 
 // Configurações
-var kafkaBootstrap = Environment.GetEnvironmentVariable("KAFKA_BOOTSTRAP") ?? "localhost:9092";
+var kafkaBootstrap = Environment.GetEnvironmentVariable("KAFKA_BOOTSTRAP_SERVERS") ??
+                     Environment.GetEnvironmentVariable("KAFKA_BOOTSTRAP") ??
+                     "kafka:9092";
 var redisUrl = Environment.GetEnvironmentVariable("REDIS_URL") ?? "localhost:6379";
 var topicStatus = Environment.GetEnvironmentVariable("TOPIC_STATUS") ?? "msg.status";
 var groupId = Environment.GetEnvironmentVariable("GROUP_ID") ?? "status-worker";

@@ -19,14 +19,16 @@ Project("{54435603-DBB4-11D2-8724-00A0C9A8B90C}") = "SetupChatClient", "SetupCha
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Itens de Solução", "Itens de Solução", "{37D201E9-0149-43C4-918D-7BDC097A4FFE}"
 	ProjectSection(SolutionItems) = preProject
+		aplicar-correcoes.ps1 = aplicar-correcoes.ps1
 		docker-compose-with-frontend.yml = docker-compose-with-frontend.yml
 		docker-compose.dev.yml = docker-compose.dev.yml
 		docker-compose.kafka.yml = docker-compose.kafka.yml
 		docker-compose.yml = docker-compose.yml
-		prometheus.yml = prometheus.yml
 		gerar-token.ps1 = gerar-token.ps1
-		setup.ps1 = setup.ps1
+		load-test.js = load-test.js
+		prometheus.yml = prometheus.yml
 		resolver-conflitos.ps1 = resolver-conflitos.ps1
+		setup.ps1 = setup.ps1
 		test-api.ps1 = test-api.ps1
 		verify-build.ps1 = verify-build.ps1
 	EndProjectSection
