@@ -4,6 +4,7 @@ using Microsoft.IdentityModel.Tokens;
 using System.Text;
 using Chat.Frontend.Services;
 using Chat.Frontend.WebSockets;
+using StackExchange.Redis;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -48,7 +49,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
                 // Permitir token via query string para WebSocket
                 var accessToken = ctx.Request.Query["access_token"];
                 var path = ctx.HttpContext.Request.Path;
-                
+
                 if (!string.IsNullOrEmpty(accessToken) && path.StartsWithSegments("/ws"))
                 {
                     ctx.Token = accessToken;
@@ -79,12 +80,12 @@ builder.Services.AddSingleton<IProducer<string, string>>(sp =>
     var config = new ProducerConfig
     {
         BootstrapServers = kafkaServers,
-        Acks = Acks.All,                    // Garantia de entrega
-        EnableIdempotence = true,           // Idempotência no Kafka
-        MaxInFlight = 1,                    // Ordem garantida por partição
+        Acks = Acks.All,
+        EnableIdempotence = true,
+        MaxInFlight = 1,
         MessageSendMaxRetries = 3,
         CompressionType = CompressionType.Snappy,
-        LingerMs = 10                       // Batch de mensagens
+        LingerMs = 10
     };
 
     var producer = new ProducerBuilder<string, string>(config)
@@ -107,6 +108,40 @@ builder.Services.AddSingleton<IProducer<string, string>>(sp =>
     logger.LogInformation("Kafka Producer initialized with servers: {Servers}", kafkaServers);
 
     return producer;
+});
+
+// ============================================
+// Redis - IConnectionMultiplexer para Pub/Sub
+// ============================================
+builder.Services.AddSingleton<IConnectionMultiplexer>(sp =>
+{
+    var redisConnection = Environment.GetEnvironmentVariable("REDIS_CONNECTION_STRING") ??
+                          builder.Configuration["Redis:ConnectionString"] ??
+                          "localhost:6379";
+
+    var logger = sp.GetRequiredService<ILogger<Program>>();
+    logger.LogInformation("Connecting to Redis: {Connection}", redisConnection);
+
+    var config = ConfigurationOptions.Parse(redisConnection);
+    config.AbortOnConnectFail = false;
+    config.ConnectRetry = 3;
+    config.ConnectTimeout = 5000;
+
+    var multiplexer = ConnectionMultiplexer.Connect(config);
+
+    multiplexer.ConnectionFailed += (_, e) =>
+    {
+        logger.LogError("Redis connection failed: {FailureType} - {Exception}",
+            e.FailureType, e.Exception?.Message);
+    };
+
+    multiplexer.ConnectionRestored += (_, e) =>
+    {
+        logger.LogInformation("Redis connection restored: {EndPoint}", e.EndPoint);
+    };
+
+    logger.LogInformation("Redis connected successfully");
+    return multiplexer;
 });
 
 // ============================================

@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using StackExchange.Redis;
 
 namespace Chat.Api.WebSockets;
@@ -14,16 +15,23 @@ public class WebSocketHub : IDisposable
     private readonly ILogger<WebSocketHub> _logger;
     private readonly IConnectionMultiplexer _redis;
     private readonly ConcurrentDictionary<string, ClientConnection> _connections;
-    private readonly ConcurrentDictionary<Guid, HashSet<string>> _conversationSubscriptions;
+    private readonly ConcurrentDictionary<string, HashSet<string>> _conversationSubscriptions; // Mudado para string key
     private ISubscriber? _subscriber;
     private bool _isSubscribing;
+
+    // Opções de deserialização case-insensitive
+    private static readonly JsonSerializerOptions _jsonOptions = new()
+    {
+        PropertyNameCaseInsensitive = true,
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+    };
 
     public WebSocketHub(ILogger<WebSocketHub> logger, IConnectionMultiplexer redis)
     {
         _logger = logger;
         _redis = redis;
         _connections = new ConcurrentDictionary<string, ClientConnection>();
-        _conversationSubscriptions = new ConcurrentDictionary<Guid, HashSet<string>>();
+        _conversationSubscriptions = new ConcurrentDictionary<string, HashSet<string>>();
         _subscriber = null;
         _isSubscribing = false;
     }
@@ -48,7 +56,7 @@ public class WebSocketHub : IDisposable
             {
                 type = "connected",
                 connectionId,
-                userId,
+                userId = userId.ToString(),
                 timestamp = DateTimeOffset.UtcNow
             }, ct);
 
@@ -92,11 +100,14 @@ public class WebSocketHub : IDisposable
         {
             // Cleanup
             _connections.TryRemove(connectionId, out _);
-            
+
             // Remover de todas as subscriptions
             foreach (var (conversationId, subscribers) in _conversationSubscriptions)
             {
-                subscribers.Remove(connectionId);
+                lock (subscribers)
+                {
+                    subscribers.Remove(connectionId);
+                }
                 if (subscribers.Count == 0)
                 {
                     _conversationSubscriptions.TryRemove(conversationId, out _);
@@ -105,10 +116,14 @@ public class WebSocketHub : IDisposable
 
             if (webSocket.State == WebSocketState.Open)
             {
-                await webSocket.CloseAsync(
-                    WebSocketCloseStatus.NormalClosure,
-                    "Conexão encerrada",
-                    CancellationToken.None);
+                try
+                {
+                    await webSocket.CloseAsync(
+                        WebSocketCloseStatus.NormalClosure,
+                        "Conexão encerrada",
+                        CancellationToken.None);
+                }
+                catch { }
             }
 
             webSocket.Dispose();
@@ -120,13 +135,21 @@ public class WebSocketHub : IDisposable
     {
         try
         {
-            var clientMessage = JsonSerializer.Deserialize<ClientMessage>(message);
-            if (clientMessage == null) return;
+            _logger.LogDebug("Mensagem raw recebida: {Message}", message);
 
-            _logger.LogInformation("Mensagem recebida: Type={Type} ConnectionId={ConnectionId}",
-                clientMessage.Type, connection.ConnectionId);
+            var clientMessage = JsonSerializer.Deserialize<ClientMessage>(message, _jsonOptions);
+            if (clientMessage == null)
+            {
+                _logger.LogWarning("Mensagem deserializada como null");
+                return;
+            }
 
-            switch (clientMessage.Type?.ToLower())
+            _logger.LogInformation("Mensagem recebida: Type={Type} ConversationId={ConversationId} ConnectionId={ConnectionId}",
+                clientMessage.Type, clientMessage.ConversationId, connection.ConnectionId);
+
+            var messageType = clientMessage.Type?.ToLower();
+
+            switch (messageType)
             {
                 case "subscribe":
                     await HandleSubscribeAsync(connection, clientMessage, ct);
@@ -141,13 +164,13 @@ public class WebSocketHub : IDisposable
                     break;
 
                 default:
-                    _logger.LogWarning("Tipo de mensagem desconhecido: {Type}", clientMessage.Type);
+                    _logger.LogWarning("Tipo de mensagem desconhecido: {Type} - Raw: {Raw}", clientMessage.Type, message);
                     break;
             }
         }
         catch (JsonException ex)
         {
-            _logger.LogError(ex, "Erro ao deserializar mensagem do cliente");
+            _logger.LogError(ex, "Erro ao deserializar mensagem do cliente: {Message}", message);
             await SendToClientAsync(connection, new
             {
                 type = "error",
@@ -158,14 +181,23 @@ public class WebSocketHub : IDisposable
 
     private async Task HandleSubscribeAsync(ClientConnection connection, ClientMessage message, CancellationToken ct)
     {
-        if (!Guid.TryParse(message.ConversationId, out var conversationId))
+        var conversationId = message.ConversationId;
+
+        if (string.IsNullOrWhiteSpace(conversationId))
         {
             await SendToClientAsync(connection, new
             {
                 type = "error",
-                message = "ConversationId inválido"
+                message = "ConversationId é obrigatório"
             }, ct);
             return;
+        }
+
+        // Aceitar tanto GUID quanto string normal
+        // Se for GUID, normalizar para formato padrão
+        if (Guid.TryParse(conversationId, out var guidValue))
+        {
+            conversationId = guidValue.ToString();
         }
 
         // Adicionar conexão às subscriptions da conversa
@@ -184,7 +216,7 @@ public class WebSocketHub : IDisposable
         await SendToClientAsync(connection, new
         {
             type = "subscribed",
-            conversationId = conversationId.ToString(),
+            conversationId = conversationId,
             timestamp = DateTimeOffset.UtcNow
         }, ct);
 
@@ -194,9 +226,17 @@ public class WebSocketHub : IDisposable
 
     private async Task HandleUnsubscribeAsync(ClientConnection connection, ClientMessage message, CancellationToken ct)
     {
-        if (!Guid.TryParse(message.ConversationId, out var conversationId))
+        var conversationId = message.ConversationId;
+
+        if (string.IsNullOrWhiteSpace(conversationId))
         {
             return;
+        }
+
+        // Normalizar GUID se necessário
+        if (Guid.TryParse(conversationId, out var guidValue))
+        {
+            conversationId = guidValue.ToString();
         }
 
         if (_conversationSubscriptions.TryGetValue(conversationId, out var subscribers))
@@ -205,7 +245,7 @@ public class WebSocketHub : IDisposable
             {
                 subscribers.Remove(connection.ConnectionId);
             }
-            
+
             if (subscribers.Count == 0)
             {
                 _conversationSubscriptions.TryRemove(conversationId, out _);
@@ -215,7 +255,7 @@ public class WebSocketHub : IDisposable
         await SendToClientAsync(connection, new
         {
             type = "unsubscribed",
-            conversationId = conversationId.ToString(),
+            conversationId = conversationId,
             timestamp = DateTimeOffset.UtcNow
         }, ct);
 
@@ -226,7 +266,7 @@ public class WebSocketHub : IDisposable
     private async Task StartRedisSubscriptionAsync()
     {
         if (_isSubscribing) return;
-        
+
         _isSubscribing = true;
         _subscriber = _redis.GetSubscriber();
 
@@ -238,26 +278,72 @@ public class WebSocketHub : IDisposable
                 try
                 {
                     var channelName = channel.ToString();
-                    // Extrair conversationId do canal "status:{guid}"
+                    // Extrair conversationId do canal "status:{id}"
                     var parts = channelName.Split(':');
-                    if (parts.Length != 2 || !Guid.TryParse(parts[1], out var conversationId))
+                    if (parts.Length != 2)
                     {
                         return;
                     }
 
+                    var conversationId = parts[1];
+
                     if (!_conversationSubscriptions.TryGetValue(conversationId, out var subscribers))
                     {
-                        return; // Nenhum cliente inscrito nesta conversa
+                        _logger.LogDebug("Nenhum cliente inscrito na conversa: {ConversationId}", conversationId);
+                        return;
                     }
 
                     var notification = value.ToString();
-                    _logger.LogInformation("Notificação Redis recebida: Channel={Channel}", channelName);
+                    _logger.LogInformation("Notificação Redis recebida: Channel={Channel} Subscribers={Count}",
+                        channelName, subscribers.Count);
 
                     // Enviar para todos os clientes inscritos
                     var tasks = new List<Task>();
                     lock (subscribers)
                     {
-                        foreach (var connectionId in subscribers)
+                        foreach (var connectionId in subscribers.ToList())
+                        {
+                            if (_connections.TryGetValue(connectionId, out var connection))
+                            {
+                                tasks.Add(SendToClientAsync(connection, notification, CancellationToken.None));
+                            }
+                        }
+                    }
+
+                    await Task.WhenAll(tasks);
+                    _logger.LogInformation("Notificação enviada para {Count} clientes", tasks.Count);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Erro ao processar notificação Redis");
+                }
+            });
+
+        // Também subscribe para mensagens novas
+        await _subscriber.SubscribeAsync(
+            RedisChannel.Pattern("messages:*"),
+            async (channel, value) =>
+            {
+                try
+                {
+                    var channelName = channel.ToString();
+                    var parts = channelName.Split(':');
+                    if (parts.Length != 2) return;
+
+                    var conversationId = parts[1];
+
+                    if (!_conversationSubscriptions.TryGetValue(conversationId, out var subscribers))
+                    {
+                        return;
+                    }
+
+                    var notification = value.ToString();
+                    _logger.LogInformation("Nova mensagem Redis: Channel={Channel}", channelName);
+
+                    var tasks = new List<Task>();
+                    lock (subscribers)
+                    {
+                        foreach (var connectionId in subscribers.ToList())
                         {
                             if (_connections.TryGetValue(connectionId, out var connection))
                             {
@@ -270,25 +356,63 @@ public class WebSocketHub : IDisposable
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, "Erro ao processar notificação Redis");
+                    _logger.LogError(ex, "Erro ao processar mensagem Redis");
                 }
             });
 
-        _logger.LogInformation("Redis subscription iniciada para pattern: status:*");
+        _logger.LogInformation("Redis subscription iniciada para patterns: status:* e messages:*");
+    }
+
+    /// <summary>
+    /// Broadcast uma mensagem para todos os clientes inscritos em uma conversa
+    /// </summary>
+    public async Task BroadcastToConversationAsync(string conversationId, object message)
+    {
+        if (!_conversationSubscriptions.TryGetValue(conversationId, out var subscribers))
+        {
+            _logger.LogDebug("Nenhum subscriber para conversa: {ConversationId}", conversationId);
+            return;
+        }
+
+        var tasks = new List<Task>();
+        lock (subscribers)
+        {
+            foreach (var connectionId in subscribers.ToList())
+            {
+                if (_connections.TryGetValue(connectionId, out var connection))
+                {
+                    tasks.Add(SendToClientAsync(connection, message, CancellationToken.None));
+                }
+            }
+        }
+
+        await Task.WhenAll(tasks);
+        _logger.LogInformation("Broadcast para conversa {ConversationId}: {Count} clientes",
+            conversationId, tasks.Count);
     }
 
     private async Task SendToClientAsync(ClientConnection connection, object data, CancellationToken ct)
     {
         try
         {
-            var json = data is string str ? str : JsonSerializer.Serialize(data);
+            if (connection.WebSocket.State != WebSocketState.Open)
+            {
+                _logger.LogWarning("WebSocket não está aberto: ConnectionId={ConnectionId} State={State}",
+                    connection.ConnectionId, connection.WebSocket.State);
+                return;
+            }
+
+            var json = data is string str ? str : JsonSerializer.Serialize(data, _jsonOptions);
             var bytes = Encoding.UTF8.GetBytes(json);
-            
+
             await connection.WebSocket.SendAsync(
                 new ArraySegment<byte>(bytes),
                 WebSocketMessageType.Text,
                 endOfMessage: true,
                 ct);
+
+            _logger.LogDebug("Mensagem enviada para ConnectionId={ConnectionId}: {Json}",
+                connection.ConnectionId, json.Length > 100 ? json.Substring(0, 100) + "..." : json);
         }
         catch (WebSocketException ex)
         {
@@ -302,7 +426,7 @@ public class WebSocketHub : IDisposable
         _subscriber?.UnsubscribeAll();
         foreach (var connection in _connections.Values)
         {
-            connection.WebSocket.Dispose();
+            try { connection.WebSocket.Dispose(); } catch { }
         }
         _connections.Clear();
     }
@@ -313,7 +437,12 @@ public class WebSocketHub : IDisposable
         Guid UserId,
         Guid OrganizacaoId);
 
-    private record ClientMessage(
-        string? Type,
-        string? ConversationId);
+    private class ClientMessage
+    {
+        [JsonPropertyName("type")]
+        public string? Type { get; set; }
+
+        [JsonPropertyName("conversationId")]
+        public string? ConversationId { get; set; }
+    }
 }

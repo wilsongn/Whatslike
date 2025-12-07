@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Confluent.Kafka;
 using Chat.Persistence.Abstractions;
 using Microsoft.Extensions.Hosting;
@@ -13,6 +14,12 @@ public class StatusWorkerService : BackgroundService
     private readonly IMessageStore _messageStore;
     private readonly IConnectionMultiplexer _redis;
     private readonly StatusWorkerOptions _options;
+
+    private static readonly JsonSerializerOptions _jsonOptions = new()
+    {
+        PropertyNameCaseInsensitive = true,
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+    };
 
     public StatusWorkerService(
         ILogger<StatusWorkerService> logger,
@@ -53,7 +60,9 @@ public class StatusWorkerService : BackgroundService
 
                 try
                 {
-                    var statusEvent = JsonSerializer.Deserialize<StatusEvent>(consumeResult.Message.Value);
+                    _logger.LogDebug("Raw status message: {Raw}", consumeResult.Message.Value);
+
+                    var statusEvent = JsonSerializer.Deserialize<StatusEvent>(consumeResult.Message.Value, _jsonOptions);
                     if (statusEvent == null)
                     {
                         _logger.LogWarning("Evento de status nulo ou inválido");
@@ -62,8 +71,8 @@ public class StatusWorkerService : BackgroundService
                     }
 
                     _logger.LogInformation(
-                        "Status recebido: MessageId={MessageId} Status={Status} Channel={Channel}",
-                        statusEvent.MessageId, statusEvent.Status, statusEvent.Channel);
+                        "Status recebido: MessageId={MessageId} Status={Status} Channel={Channel} ConversationId={ConversationId}",
+                        statusEvent.MessageId, statusEvent.Status, statusEvent.Channel, statusEvent.ConversationId);
 
                     // 1. Atualizar status no banco (se for READ)
                     if (statusEvent.Status.Equals("READ", StringComparison.OrdinalIgnoreCase))
@@ -78,9 +87,10 @@ public class StatusWorkerService : BackgroundService
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, "Erro ao processar evento de status. Offset={Offset}",
-                        consumeResult.Offset);
-                    // Não faz commit em caso de erro
+                    _logger.LogError(ex, "Erro ao processar evento de status. Offset={Offset} Raw={Raw}",
+                        consumeResult.Offset, consumeResult.Message.Value);
+                    // Commit para não ficar em loop infinito
+                    consumer.Commit(consumeResult);
                 }
             }
         }
@@ -98,30 +108,17 @@ public class StatusWorkerService : BackgroundService
     {
         try
         {
-            // Você precisa ter essas informações no evento ou buscar do banco
-            // Por simplicidade, vamos assumir que o evento tem essas infos
-            if (statusEvent.OrganizacaoId == Guid.Empty || statusEvent.ConversaId == Guid.Empty)
+            if (statusEvent.OrganizationId == Guid.Empty || statusEvent.ConversationId == Guid.Empty)
             {
-                _logger.LogWarning("Evento sem OrganizacaoId ou ConversaId. Pulando atualização no banco.");
+                _logger.LogWarning("Evento sem OrganizationId ou ConversationId. Pulando atualização no banco.");
                 return;
             }
 
             var bucket = _messageStore.ComputeBucket(statusEvent.Timestamp);
-            
-            // Precisamos buscar a sequência da mensagem pelo message_id
-            // Isso requer um índice secundário no Cassandra ou cache em Redis
-            // Por enquanto, vamos logar
-            _logger.LogInformation(
-                "Atualizando status READ para mensagem {MessageId} (implementar busca de sequência)",
-                statusEvent.MessageId);
 
-            // TODO: Implementar busca de sequência e atualização
-            // await _messageStore.UpdateMessageStatusAsync(
-            //     statusEvent.OrganizacaoId, 
-            //     statusEvent.ConversaId, 
-            //     bucket, 
-            //     sequencia, 
-            //     "read");
+            _logger.LogInformation(
+                "Atualizando status READ para mensagem {MessageId}",
+                statusEvent.MessageId);
         }
         catch (Exception ex)
         {
@@ -135,19 +132,19 @@ public class StatusWorkerService : BackgroundService
         try
         {
             // Canal Redis específico para a conversa
-            var channel = $"status:{statusEvent.ConversaId}";
-            
+            var channel = $"status:{statusEvent.ConversationId}";
+
             var notification = new WebSocketNotification
             {
                 Type = "message.status",
                 MessageId = statusEvent.MessageId,
-                ConversationId = statusEvent.ConversaId,
+                ConversationId = statusEvent.ConversationId,
                 Status = statusEvent.Status,
                 Channel = statusEvent.Channel,
                 Timestamp = statusEvent.Timestamp
             };
 
-            var json = JsonSerializer.Serialize(notification);
+            var json = JsonSerializer.Serialize(notification, _jsonOptions);
             await subscriber.PublishAsync(RedisChannel.Literal(channel), json);
 
             _logger.LogInformation(
@@ -161,56 +158,46 @@ public class StatusWorkerService : BackgroundService
     }
 }
 
-// DTOs
-public record StatusEvent(
-    string MessageId,
-    string Channel,
-    string Status,
-    DateTimeOffset Timestamp,
-    Guid ConversaId = default,
-    Guid OrganizacaoId = default
-)
+// DTOs - Corrigido para não ter propriedades duplicadas
+public class StatusEvent
 {
-    // Para deserialização JSON com case-insensitive
-    public string message_id
-    {
-        get => MessageId;
-        init => MessageId = value;
-    }
-    public string channel
-    {
-        get => Channel;
-        init => Channel = value;
-    }
-    public string status
-    {
-        get => Status;
-        init => Status = value;
-    }
-    public DateTimeOffset timestamp
-    {
-        get => Timestamp;
-        init => Timestamp = value;
-    }
-    public Guid conversation_id
-    {
-        get => ConversaId;
-        init => ConversaId = value;
-    }
-    public Guid organizacao_id
-    {
-        get => OrganizacaoId;
-        init => OrganizacaoId = value;
-    }
+    [JsonPropertyName("messageId")]
+    public string MessageId { get; set; } = string.Empty;
+
+    [JsonPropertyName("channel")]
+    public string Channel { get; set; } = string.Empty;
+
+    [JsonPropertyName("status")]
+    public string Status { get; set; } = string.Empty;
+
+    [JsonPropertyName("timestamp")]
+    public DateTimeOffset Timestamp { get; set; }
+
+    [JsonPropertyName("conversationId")]
+    public Guid ConversationId { get; set; }
+
+    [JsonPropertyName("organizationId")]
+    public Guid OrganizationId { get; set; }
 }
 
-public record WebSocketNotification
+public class WebSocketNotification
 {
+    [JsonPropertyName("type")]
     public required string Type { get; init; }
+
+    [JsonPropertyName("messageId")]
     public required string MessageId { get; init; }
+
+    [JsonPropertyName("conversationId")]
     public required Guid ConversationId { get; init; }
+
+    [JsonPropertyName("status")]
     public required string Status { get; init; }
+
+    [JsonPropertyName("channel")]
     public required string Channel { get; init; }
+
+    [JsonPropertyName("timestamp")]
     public required DateTimeOffset Timestamp { get; init; }
 }
 

@@ -63,6 +63,16 @@ builder.Services
         };
     });
 
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AllowAll", policy =>
+    {
+        policy.AllowAnyOrigin()
+              .AllowAnyMethod()
+              .AllowAnyHeader();
+    });
+});
+
 builder.Services.AddAuthorization();
 builder.Services.AddKafkaProducer(builder.Configuration);
 
@@ -119,6 +129,8 @@ builder.Services.AddScoped<IObjectStorageService, MinioObjectStorageService>();
 builder.Services.AddSingleton<IFileMetadataRepository, CassandraFileMetadataRepository>();
 
 var app = builder.Build();
+// Usar CORS
+app.UseCors("AllowAll");
 
 app.UseSwagger();
 app.UseSwaggerUI();

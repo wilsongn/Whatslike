@@ -91,19 +91,18 @@ public class FilesController : ControllerBase
                 "File uploaded successfully: FileId={FileId}, ObjectName={ObjectName}, Checksum={Checksum}",
                 fileId, objectName, checksum);
 
-            // TODO: Salvar metadata no Cassandra
-            // - fileId, fileName, size, contentType, checksum
-            // - uploaderId, conversationId, organizationId
-            // - uploadedAt
-
+            // Retornar informações completas para reconstruir o caminho
             return Ok(new
             {
                 fileId,
                 fileName = file.FileName,
+                extension = extension,
                 size = file.Length,
                 contentType = file.ContentType,
                 checksum,
                 conversationId,
+                organizationId,
+                objectName, // Caminho completo no MinIO
                 uploadedAt = DateTimeOffset.UtcNow
             });
         }
@@ -116,25 +115,52 @@ public class FilesController : ControllerBase
 
     /// <summary>
     /// Obter URL temporária para download
+    /// Requer conversationId e extension para reconstruir o caminho
     /// </summary>
     [HttpGet("{fileId}/download-url")]
-    public async Task<IActionResult> GetDownloadUrl(string fileId)
+    public async Task<IActionResult> GetDownloadUrl(
+        string fileId,
+        [FromQuery] string conversationId,
+        [FromQuery] string extension)
     {
         var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
         var organizationId = User.FindFirst("tenant_id")?.Value ?? Guid.Empty.ToString();
 
         _logger.LogInformation(
-            "Generating download URL: FileId={FileId}, UserId={UserId}",
-            fileId, userId);
+            "Generating download URL: FileId={FileId}, ConversationId={ConversationId}, Extension={Extension}",
+            fileId, conversationId, extension);
+
+        // Validar parâmetros
+        if (string.IsNullOrEmpty(conversationId))
+        {
+            return BadRequest(new { error = "conversationId is required" });
+        }
+
+        // Garantir que extension começa com ponto
+        if (!string.IsNullOrEmpty(extension) && !extension.StartsWith("."))
+        {
+            extension = "." + extension;
+        }
 
         try
         {
-            // TODO: Buscar metadata no Cassandra para pegar o objectName correto
-            // Por enquanto, assumir padrão: {orgId}/{convId}/{fileId}.ext
-            // Em produção, fazer SELECT no Cassandra
+            // Reconstruir o caminho exato do objeto
+            var objectName = $"{organizationId}/{conversationId}/{fileId}{extension}";
 
-            // Exemplo temporário (ajustar com dados reais do Cassandra):
-            var objectName = $"{organizationId}/*/{fileId}.*"; // Buscar padrão
+            _logger.LogInformation("Looking for object: {ObjectName}", objectName);
+
+            // Verificar se o objeto existe
+            try
+            {
+                await _minioClient.StatObjectAsync(new StatObjectArgs()
+                    .WithBucket(_bucketName)
+                    .WithObject(objectName));
+            }
+            catch (Minio.Exceptions.ObjectNotFoundException)
+            {
+                _logger.LogWarning("Object not found: {ObjectName}", objectName);
+                return NotFound(new { error = "File not found", objectName });
+            }
 
             // Gerar presigned URL válida por X segundos
             var presignedUrl = await _minioClient.PresignedGetObjectAsync(
@@ -158,6 +184,65 @@ public class FilesController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error generating download URL: FileId={FileId}", fileId);
+            return StatusCode(500, new { error = "Failed to generate download URL" });
+        }
+    }
+
+    /// <summary>
+    /// Obter URL de download usando objectName completo
+    /// Alternativa mais simples quando se tem o caminho completo
+    /// </summary>
+    [HttpPost("download-url")]
+    public async Task<IActionResult> GetDownloadUrlByObjectName([FromBody] DownloadUrlRequest request)
+    {
+        var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+
+        _logger.LogInformation(
+            "Generating download URL by objectName: {ObjectName}",
+            request.ObjectName);
+
+        if (string.IsNullOrEmpty(request.ObjectName))
+        {
+            return BadRequest(new { error = "objectName is required" });
+        }
+
+        try
+        {
+            // Verificar se o objeto existe
+            try
+            {
+                await _minioClient.StatObjectAsync(new StatObjectArgs()
+                    .WithBucket(_bucketName)
+                    .WithObject(request.ObjectName));
+            }
+            catch (Minio.Exceptions.ObjectNotFoundException)
+            {
+                _logger.LogWarning("Object not found: {ObjectName}", request.ObjectName);
+                return NotFound(new { error = "File not found", objectName = request.ObjectName });
+            }
+
+            // Gerar presigned URL
+            var presignedUrl = await _minioClient.PresignedGetObjectAsync(
+                new PresignedGetObjectArgs()
+                    .WithBucket(_bucketName)
+                    .WithObject(request.ObjectName)
+                    .WithExpiry(_presignedUrlExpiry));
+
+            _logger.LogInformation(
+                "Download URL generated for: {ObjectName}, ExpiresIn={Expiry}s",
+                request.ObjectName, _presignedUrlExpiry);
+
+            return Ok(new
+            {
+                objectName = request.ObjectName,
+                downloadUrl = presignedUrl,
+                expiresIn = _presignedUrlExpiry,
+                expiresAt = DateTimeOffset.UtcNow.AddSeconds(_presignedUrlExpiry)
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error generating download URL: {ObjectName}", request.ObjectName);
             return StatusCode(500, new { error = "Failed to generate download URL" });
         }
     }
@@ -188,9 +273,16 @@ public class FilesController : ControllerBase
             {
                 if (item.IsDir) continue;
 
+                // Extrair fileId e extension do objectName
+                var fileName = Path.GetFileName(item.Key);
+                var fileId = Path.GetFileNameWithoutExtension(fileName);
+                var extension = Path.GetExtension(fileName);
+
                 files.Add(new
                 {
                     objectName = item.Key,
+                    fileId,
+                    extension,
                     size = item.Size,
                     lastModified = item.LastModifiedDateTime
                 });
@@ -209,4 +301,9 @@ public class FilesController : ControllerBase
             return StatusCode(500, new { error = "Failed to list files" });
         }
     }
+}
+
+public class DownloadUrlRequest
+{
+    public string ObjectName { get; set; } = string.Empty;
 }

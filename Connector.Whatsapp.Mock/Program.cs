@@ -2,6 +2,7 @@ using Confluent.Kafka;
 using Confluent.Kafka.Admin;
 using System.Net.Http.Json;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -71,24 +72,24 @@ app.MapPost("/mock/incoming", async (IncomingDto dto, IProducer<string, string> 
 {
     var evt = new
     {
-        message_id = Guid.NewGuid().ToString("N"),
+        messageId = Guid.NewGuid().ToString(),
         channel = ChannelName,
         from = dto.From,
         to = dto.To,
         text = dto.Text,
-        conversation_id = dto.ConversationId,
-        timestamp = DateTime.UtcNow
+        conversationId = dto.ConversationId,
+        timestamp = DateTimeOffset.UtcNow
     };
     var json = JsonSerializer.Serialize(evt);
     await prod.ProduceAsync(topicIn, new Message<string, string>
     {
-        Key = dto.ConversationId ?? dto.To ?? Guid.NewGuid().ToString("N"),
+        Key = dto.ConversationId ?? dto.To ?? Guid.NewGuid().ToString(),
         Value = json
     });
     return Results.Json(
-    new { status = "queued", topic = topicIn },
-    statusCode: StatusCodes.Status202Accepted
-);
+        new { status = "queued", topic = topicIn },
+        statusCode: StatusCodes.Status202Accepted
+    );
 });
 
 app.Run();
@@ -106,6 +107,11 @@ sealed class OutboundConsumer : BackgroundService
     private readonly string? _jwt;
     private readonly string _channel;
     private readonly HttpClient _http;
+
+    private static readonly JsonSerializerOptions _jsonOptions = new()
+    {
+        PropertyNameCaseInsensitive = true
+    };
 
     public OutboundConsumer(
         IConsumer<string, string> consumer,
@@ -141,19 +147,34 @@ sealed class OutboundConsumer : BackgroundService
                 var cr = _consumer.Consume(TimeSpan.FromMilliseconds(250));
                 if (cr is null) continue;
 
-                var payload = JsonSerializer.Deserialize<OutboundDto>(cr.Message.Value);
-                if (payload is null) { _consumer.Commit(cr); continue; }
+                Console.WriteLine($"[{_channel.ToUpper()}] Raw message: {cr.Message.Value}");
 
-                Console.WriteLine($"[{_channel.ToUpper()}] -> {payload.to} | {(payload.text ?? payload.file_id)} | Conv={payload.conversation_id} Org={payload.organizacao_id}");
+                var payload = JsonSerializer.Deserialize<OutboundDto>(cr.Message.Value, _jsonOptions);
+                if (payload is null)
+                {
+                    Console.WriteLine($"[{_channel.ToUpper()}] Failed to deserialize message");
+                    _consumer.Commit(cr);
+                    continue;
+                }
 
-                // 1) SENT
-                await EmitStatusAsync(payload.message_id, "SENT", payload.conversation_id, payload.organizacao_id, stoppingToken);
-                // 2) DELIVERED
-                await Task.Delay(400, stoppingToken);
-                await EmitStatusAsync(payload.message_id, "DELIVERED", payload.conversation_id, payload.organizacao_id, stoppingToken);
-                // 3) READ
-                await Task.Delay(800, stoppingToken);
-                await EmitStatusAsync(payload.message_id, "READ", payload.conversation_id, payload.organizacao_id, stoppingToken);
+                Console.WriteLine($"[{_channel.ToUpper()}] -> MessageId={payload.MessageId} Conv={payload.ConversationId} Org={payload.OrganizationId}");
+
+                // Validar que temos os IDs necessários
+                if (payload.ConversationId == Guid.Empty)
+                {
+                    Console.WriteLine($"[{_channel.ToUpper()}] WARNING: ConversationId is empty!");
+                }
+
+                // 1) SENT - imediato
+                await EmitStatusAsync(payload.MessageId, "SENT", payload.ConversationId, payload.OrganizationId, stoppingToken);
+
+                // 2) DELIVERED - após 500ms
+                await Task.Delay(500, stoppingToken);
+                await EmitStatusAsync(payload.MessageId, "DELIVERED", payload.ConversationId, payload.OrganizationId, stoppingToken);
+
+                // 3) READ - após mais 1s
+                await Task.Delay(1000, stoppingToken);
+                await EmitStatusAsync(payload.MessageId, "READ", payload.ConversationId, payload.OrganizationId, stoppingToken);
 
                 _consumer.Commit(cr);
             }
@@ -161,35 +182,50 @@ sealed class OutboundConsumer : BackgroundService
             {
                 Console.WriteLine($"[KAFKA] consume error: {e.Error.Reason}");
             }
+            catch (Exception e)
+            {
+                Console.WriteLine($"[{_channel.ToUpper()}] Error processing message: {e.Message}");
+            }
         }
     }
 
     private async Task EmitStatusAsync(
-        string messageId, 
-        string status, 
-        Guid conversationId, 
-        Guid organizacaoId, 
+        string messageId,
+        string status,
+        Guid conversationId,
+        Guid organizationId,
         CancellationToken ct)
     {
+        // Usar camelCase consistente
         var evt = new
         {
-            message_id = messageId,
+            messageId = messageId,
             channel = _channel,
-            status,
-            timestamp = DateTime.UtcNow,
-            conversation_id = conversationId,
-            organizacao_id = organizacaoId
+            status = status,
+            timestamp = DateTimeOffset.UtcNow,
+            conversationId = conversationId,
+            organizationId = organizationId
         };
         var json = JsonSerializer.Serialize(evt);
 
-        // (A) publica no tópico de status
-        await _producer.ProduceAsync(_topicStatus, new Message<string, string>
-        {
-            Key = messageId,
-            Value = json
-        }, ct);
+        Console.WriteLine($"[{_channel.ToUpper()}] Emitting status: {status} for {messageId} conv={conversationId}");
 
-        // (B) envia callback HTTP
+        // (A) publica no tópico de status
+        try
+        {
+            var result = await _producer.ProduceAsync(_topicStatus, new Message<string, string>
+            {
+                Key = messageId,
+                Value = json
+            }, ct);
+            Console.WriteLine($"[KAFKA] Status published to {_topicStatus}: {status} partition={result.Partition} offset={result.Offset}");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[KAFKA] Failed to publish status: {ex.Message}");
+        }
+
+        // (B) envia callback HTTP (opcional, pode falhar)
         try
         {
             var res = await _http.PostAsJsonAsync(_callbackUrl, evt, ct);
@@ -197,26 +233,32 @@ sealed class OutboundConsumer : BackgroundService
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[CALLBACK] falhou: {ex.Message}");
+            Console.WriteLine($"[CALLBACK] failed (non-critical): {ex.Message}");
         }
     }
+}
 
-    private sealed record OutboundDto(
-        string message_id, 
-        string channel, 
-        string to, 
-        string? text, 
-        string? file_id, 
-        Guid conversation_id,
-        Guid organizacao_id)
-    {
-        // JSON property names com underscore
-        public string message_id { get; init; } = message_id;
-        public string channel { get; init; } = channel;
-        public string to { get; init; } = to;
-        public string? text { get; init; } = text;
-        public string? file_id { get; init; } = file_id;
-        public Guid conversation_id { get; init; } = conversation_id;
-        public Guid organizacao_id { get; init; } = organizacao_id;
-    }
+// DTO com suporte a camelCase (case-insensitive)
+public class OutboundDto
+{
+    [JsonPropertyName("messageId")]
+    public string MessageId { get; set; } = string.Empty;
+
+    [JsonPropertyName("channel")]
+    public string Channel { get; set; } = string.Empty;
+
+    [JsonPropertyName("conversationId")]
+    public Guid ConversationId { get; set; }
+
+    [JsonPropertyName("organizationId")]
+    public Guid OrganizationId { get; set; }
+
+    [JsonPropertyName("senderId")]
+    public string SenderId { get; set; } = string.Empty;
+
+    [JsonPropertyName("content")]
+    public string? Content { get; set; }
+
+    [JsonPropertyName("timestamp")]
+    public long Timestamp { get; set; }
 }

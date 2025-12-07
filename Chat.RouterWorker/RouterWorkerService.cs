@@ -105,7 +105,10 @@ public sealed class RouterWorkerService : BackgroundService
                 var cr = consumer.Consume(stoppingToken);
                 var val = cr.Message.Value;
 
-                MessageProducedEvent? evt = JsonSerializer.Deserialize<MessageProducedEvent>(val);
+                MessageProducedEvent? evt = JsonSerializer.Deserialize<MessageProducedEvent>(val, new JsonSerializerOptions
+                {
+                    PropertyNameCaseInsensitive = true
+                });
 
                 if (evt == null)
                 {
@@ -138,12 +141,17 @@ public sealed class RouterWorkerService : BackgroundService
                 var bucket = _store.ComputeBucket(evt.CriadoEm);
                 await _store.UpdateMessageStatusAsync(evt.OrganizacaoId, evt.ConversaId, bucket, seq, "delivered");
 
-                _log.LogInformation("Persistido conversa={ConversaId} seq={Seq} offset={Offset}",
-                    evt.ConversaId, seq, cr.Offset);
+                _log.LogInformation("Persistido conversa={ConversaId} seq={Seq} offset={Offset} canal={Canal}",
+                    evt.ConversaId, seq, cr.Offset, evt.Canal);
 
-                // Publicar em msg.out.whatsapp (ou outro canal baseado em regras)
-                // Por enquanto, sempre WhatsApp
-                var outTopic = "msg.out.whatsapp";
+                // ========== Publicar no tópico do canal (whatsapp ou instagram) ==========
+                var channel = evt.Canal?.ToLowerInvariant() ?? "whatsapp";
+                var outTopic = channel switch
+                {
+                    "instagram" => "msg.out.instagram",
+                    "whatsapp" => "msg.out.whatsapp",
+                    _ => "msg.out.whatsapp"
+                };
 
                 var outEvent = new
                 {
@@ -153,7 +161,7 @@ public sealed class RouterWorkerService : BackgroundService
                     senderId = evt.UsuarioRemetenteId.ToString(),
                     content = evt.ConteudoJson,
                     timestamp = evt.CriadoEm.ToUnixTimeMilliseconds(),
-                    channel = "whatsapp"
+                    channel = channel
                 };
 
                 var outJson = JsonSerializer.Serialize(outEvent);
@@ -169,8 +177,8 @@ public sealed class RouterWorkerService : BackgroundService
                         });
 
                     _log.LogInformation(
-                        "Publicado em {Topic}: MessageId={MessageId} Partition={Partition} Offset={Offset}",
-                        outTopic, evt.MensagemId, deliveryResult.Partition.Value, deliveryResult.Offset.Value);
+                        "Publicado em {Topic}: MessageId={MessageId} Canal={Channel} Partition={Partition} Offset={Offset}",
+                        outTopic, evt.MensagemId, channel, deliveryResult.Partition.Value, deliveryResult.Offset.Value);
                 }
                 catch (Exception ex)
                 {
@@ -196,13 +204,15 @@ public sealed class RouterWorkerService : BackgroundService
         }
     }
 
-    private sealed record MessageProducedEvent(
-        Guid OrganizacaoId,
-        Guid ConversaId,
-        Guid MensagemId,
-        Guid UsuarioRemetenteId,
-        string Direcao,
-        string ConteudoJson,
-        DateTimeOffset CriadoEm
-    );
+    private sealed class MessageProducedEvent
+    {
+        public Guid ConversaId { get; set; }
+        public Guid MensagemId { get; set; }
+        public Guid UsuarioRemetenteId { get; set; }
+        public Guid OrganizacaoId { get; set; }
+        public string Direcao { get; set; } = string.Empty;
+        public string Canal { get; set; } = "whatsapp";
+        public string ConteudoJson { get; set; } = string.Empty;
+        public DateTimeOffset CriadoEm { get; set; }
+    }
 }
