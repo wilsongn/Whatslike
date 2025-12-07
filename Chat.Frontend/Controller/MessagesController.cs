@@ -104,6 +104,9 @@ public class MessagesController : ControllerBase
                 messageId = messageId,
                 conversationId = normalizedConversationId,
                 senderId = userId,
+                // IMPORTANTE: organizationId do remetente para download de arquivos
+                organizationId = organizationId,
+                senderOrganizationId = organizationId,
                 channel = request.Channel ?? "whatsapp",
                 content = new
                 {
@@ -116,6 +119,10 @@ public class MessagesController : ControllerBase
                 fileName = request.FileName ?? "",
                 fileExtension = request.FileExtension ?? "",
                 fileSize = request.FileSize ?? 0,
+                // OrganizationId específico do arquivo (usa o do request se fornecido, senão o do JWT)
+                fileOrganizationId = !string.IsNullOrEmpty(request.FileOrganizationId)
+                    ? request.FileOrganizationId
+                    : organizationId,
                 timestamp = timestamp,
                 status = "sending"
             };
@@ -203,5 +210,6 @@ public class SendMessageRequest
     public string? FileName { get; set; }
     public string? FileExtension { get; set; }
     public long? FileSize { get; set; }
+    public string? FileOrganizationId { get; set; }
     public string Channel { get; set; } = "whatsapp";
 }

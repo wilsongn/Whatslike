@@ -14,6 +14,7 @@ namespace Chat.Api.Controllers;
 public class FilesController : ControllerBase
 {
     private readonly IMinioClient _minioClient;
+    private readonly IMinioClient _publicMinioClient; // Cliente para URLs públicas
     private readonly ILogger<FilesController> _logger;
     private readonly string _bucketName;
     private readonly int _presignedUrlExpiry;
@@ -27,6 +28,22 @@ public class FilesController : ControllerBase
         _logger = logger;
         _bucketName = configuration["Minio:BucketName"] ?? "whatslike-files";
         _presignedUrlExpiry = int.Parse(configuration["Minio:PresignedUrlExpirySeconds"] ?? "3600");
+
+        // Criar cliente MinIO com endpoint público para presigned URLs
+        var publicEndpoint = configuration["Minio:PublicEndpoint"]
+            ?? configuration["Minio:Endpoint"]?.Replace("minio:", "localhost:")
+            ?? "localhost:9000";
+        var accessKey = configuration["Minio:AccessKey"] ?? "minioadmin";
+        var secretKey = configuration["Minio:SecretKey"] ?? "minioadmin";
+        var useSSL = bool.Parse(configuration["Minio:UseSSL"] ?? "false");
+
+        _publicMinioClient = new MinioClient()
+            .WithEndpoint(publicEndpoint)
+            .WithCredentials(accessKey, secretKey)
+            .WithSSL(useSSL)
+            .Build();
+
+        _logger.LogInformation("MinIO Public Endpoint configured: {Endpoint}", publicEndpoint);
     }
 
     /// <summary>
@@ -116,19 +133,24 @@ public class FilesController : ControllerBase
     /// <summary>
     /// Obter URL temporária para download
     /// Requer conversationId e extension para reconstruir o caminho
+    /// organizationId é opcional - se não fornecido, usa o do JWT
     /// </summary>
     [HttpGet("{fileId}/download-url")]
     public async Task<IActionResult> GetDownloadUrl(
         string fileId,
         [FromQuery] string conversationId,
-        [FromQuery] string extension)
+        [FromQuery] string extension,
+        [FromQuery] string? organizationId = null)
     {
         var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        var organizationId = User.FindFirst("tenant_id")?.Value ?? Guid.Empty.ToString();
+        // Usar organizationId do parâmetro se fornecido, senão usar do JWT
+        var orgId = !string.IsNullOrEmpty(organizationId)
+            ? organizationId
+            : User.FindFirst("tenant_id")?.Value ?? Guid.Empty.ToString();
 
         _logger.LogInformation(
-            "Generating download URL: FileId={FileId}, ConversationId={ConversationId}, Extension={Extension}",
-            fileId, conversationId, extension);
+            "Generating download URL: FileId={FileId}, ConversationId={ConversationId}, Extension={Extension}, OrganizationId={OrgId}",
+            fileId, conversationId, extension, orgId);
 
         // Validar parâmetros
         if (string.IsNullOrEmpty(conversationId))
@@ -145,7 +167,7 @@ public class FilesController : ControllerBase
         try
         {
             // Reconstruir o caminho exato do objeto
-            var objectName = $"{organizationId}/{conversationId}/{fileId}{extension}";
+            var objectName = $"{orgId}/{conversationId}/{fileId}{extension}";
 
             _logger.LogInformation("Looking for object: {ObjectName}", objectName);
 
@@ -163,15 +185,16 @@ public class FilesController : ControllerBase
             }
 
             // Gerar presigned URL válida por X segundos
-            var presignedUrl = await _minioClient.PresignedGetObjectAsync(
+            // IMPORTANTE: Usar cliente com endpoint público para URLs acessíveis pelo navegador
+            var presignedUrl = await _publicMinioClient.PresignedGetObjectAsync(
                 new PresignedGetObjectArgs()
                     .WithBucket(_bucketName)
                     .WithObject(objectName)
                     .WithExpiry(_presignedUrlExpiry));
 
             _logger.LogInformation(
-                "Download URL generated: FileId={FileId}, ExpiresIn={Expiry}s",
-                fileId, _presignedUrlExpiry);
+                "Download URL generated: FileId={FileId}, ExpiresIn={Expiry}s, URL={Url}",
+                fileId, _presignedUrlExpiry, presignedUrl.Substring(0, Math.Min(80, presignedUrl.Length)) + "...");
 
             return Ok(new
             {
@@ -222,7 +245,8 @@ public class FilesController : ControllerBase
             }
 
             // Gerar presigned URL
-            var presignedUrl = await _minioClient.PresignedGetObjectAsync(
+            // IMPORTANTE: Usar cliente com endpoint público para URLs acessíveis pelo navegador
+            var presignedUrl = await _publicMinioClient.PresignedGetObjectAsync(
                 new PresignedGetObjectArgs()
                     .WithBucket(_bucketName)
                     .WithObject(request.ObjectName)

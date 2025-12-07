@@ -1,6 +1,9 @@
 using Chat.Api.Infrastructure.Storage;
 using Chat.Api.Messaging;
 using Chat.Api.WebSockets;
+using Chat.Api.Models;
+using Chat.Api.Services;
+using Chat.Api.Repositories;
 using Chat.Persistence;
 using Chat.Persistence.Abstractions;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -126,6 +129,13 @@ builder.Services.AddSingleton(sp =>
 });
 
 builder.Services.AddScoped<IObjectStorageService, MinioObjectStorageService>();
+// User Repository
+builder.Services.AddScoped<IUserRepository, CassandraUserRepository>();
+builder.Services.AddScoped<IConversationRepository, CassandraConversationRepository>();
+builder.Services.AddScoped<IPresenceRepository, RedisPresenceRepository>();
+builder.Services.AddScoped<IPresenceService, PresenceService>();
+builder.Services.AddScoped<IPendingMessageRepository, CassandraPendingMessageRepository>();
+builder.Services.AddScoped<IOfflineMessageService, OfflineMessageService>();
 builder.Services.AddSingleton<IFileMetadataRepository, CassandraFileMetadataRepository>();
 
 var app = builder.Build();

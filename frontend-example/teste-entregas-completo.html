@@ -241,23 +241,57 @@
             overflow-y: auto;
             padding: 20px;
             background: var(--gray-50);
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
         }
 
         .message {
-            margin-bottom: 16px;
             padding: 16px;
             background: white;
             border-radius: 12px;
             box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+            max-width: 75%;
+            width: fit-content;
         }
 
             .message.outbound {
-                border-left: 4px solid var(--primary);
+                align-self: flex-end;
+                background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
+                color: white;
+                border-radius: 12px 12px 0 12px;
             }
 
+                .message.outbound .message-header {
+                    color: rgba(255,255,255,0.8);
+                }
+
+                .message.outbound .message-content {
+                    color: white;
+                }
+
+                .message.outbound .message-status {
+                    border-top-color: rgba(255,255,255,0.2);
+                }
+
+                .message.outbound .message-attachment {
+                    background: rgba(255,255,255,0.15);
+                }
+
+                    .message.outbound .message-attachment:hover {
+                        background: rgba(255,255,255,0.25);
+                    }
+
             .message.inbound {
+                align-self: flex-start;
+                background: white;
+                border-radius: 12px 12px 12px 0;
                 border-left: 4px solid var(--success);
             }
+
+                .message.inbound .message-content {
+                    color: var(--gray-900);
+                }
 
         .message-header {
             display: flex;
@@ -336,6 +370,31 @@
         .status-failed {
             background: #fee2e2;
             color: #991b1b;
+        }
+
+        .status-received {
+            background: #d1fae5;
+            color: #065f46;
+        }
+
+        .message.outbound .status-sending {
+            background: rgba(255,255,255,0.3);
+            color: white;
+        }
+
+        .message.outbound .status-sent {
+            background: rgba(255,255,255,0.3);
+            color: white;
+        }
+
+        .message.outbound .status-delivered {
+            background: rgba(255,255,255,0.4);
+            color: white;
+        }
+
+        .message.outbound .status-read {
+            background: rgba(255,255,255,0.5);
+            color: white;
         }
 
         .send-area {
@@ -1065,6 +1124,11 @@
             if (data.type === 'message.status') {
                 updateMessageStatus(data);
             } else if (data.type === 'new.message' || data.type === 'message.new') {
+                // Verificar se a mensagem já existe (evita sobrescrever mensagens enviadas pelo próprio usuário)
+                if (messages.has(data.messageId)) {
+                    log(`📩 Mensagem já existe localmente: ${data.messageId}`, 'info');
+                    return;
+                }
                 addInboundMessage(data);
                 log(`📩 Nova mensagem recebida: ${data.messageId}`, 'success');
             } else if (data.type === 'connected') {
@@ -1249,7 +1313,9 @@
                 fileName: data.fileName || '',
                 fileExtension: data.fileExtension || '',
                 fileConversationId: data.conversationId,
-                fileSize: data.fileSize || 0
+                fileSize: data.fileSize || 0,
+                // OrganizationId do remetente (prioriza fileOrganizationId, depois organizationId)
+                fileOrganizationId: data.fileOrganizationId || data.organizationId || data.senderOrganizationId || ''
             });
             renderMessages();
         }
@@ -1301,21 +1367,28 @@
                     const ext = msg.fileExtension || '';
                     const fileName = msg.fileName || 'Arquivo anexado';
                     const fileSize = msg.fileSize ? formatFileSize(msg.fileSize) : '';
+                    const orgId = msg.fileOrganizationId || '';
+                    const isOutbound = msg.direction === 'outbound';
 
                     // Escapar aspas simples para evitar problemas no onclick
                     const safeFileId = (msg.fileId || '').replace(/'/g, "\\'");
                     const safeConvId = (convId || '').replace(/'/g, "\\'");
                     const safeExt = (ext || '').replace(/'/g, "\\'");
                     const safeFileName = (fileName || '').replace(/'/g, "\\'");
+                    const safeOrgId = (orgId || '').replace(/'/g, "\\'");
+
+                    // Cores diferentes para outbound (fundo roxo) e inbound (fundo branco)
+                    const subTextColor = isOutbound ? 'rgba(255,255,255,0.7)' : 'var(--gray-500)';
+                    const linkColor = isOutbound ? 'rgba(255,255,255,0.9)' : 'var(--primary)';
 
                     attachmentHtml = `
-                            <div class="message-attachment" onclick="downloadFile('${safeFileId}', '${safeConvId}', '${safeExt}', '${safeFileName}')">
+                            <div class="message-attachment" onclick="downloadFile('${safeFileId}', '${safeConvId}', '${safeExt}', '${safeFileName}', '${safeOrgId}')">
                                 <span class="message-attachment-icon">📎</span>
                                 <div style="flex: 1;">
                                     <div style="font-weight: 500;">${escapeHtml(fileName)}</div>
-                                    <div style="font-size: 11px; color: var(--gray-500);">
+                                    <div style="font-size: 11px; color: ${subTextColor};">
                                         ${fileSize}
-                                        <span style="color: var(--primary);">⬇️ Clique para baixar</span>
+                                        <span style="color: ${linkColor};">⬇️ Clique para baixar</span>
                                     </div>
                                 </div>
                             </div>
@@ -1339,7 +1412,7 @@
             container.scrollTop = container.scrollHeight;
         }
 
-        async function downloadFile(fileId, conversationId, extension, fileName) {
+        async function downloadFile(fileId, conversationId, extension, fileName, organizationId) {
             if (!fileId) {
                 showToast('Arquivo não disponível para download', 'error');
                 return;
@@ -1351,8 +1424,11 @@
             showToast(`Preparando download de ${fileName}...`, 'info');
 
             try {
-                // Buscar presigned URL
-                const url = `http://localhost:5000/api/v1/files/${fileId}/download-url?conversationId=${conversationId}&extension=${encodeURIComponent(extension || '')}`;
+                // Buscar presigned URL - incluir organizationId se disponível
+                let url = `http://localhost:5000/api/v1/files/${fileId}/download-url?conversationId=${conversationId}&extension=${encodeURIComponent(extension || '')}`;
+                if (organizationId) {
+                    url += `&organizationId=${encodeURIComponent(organizationId)}`;
+                }
 
                 const response = await fetch(url, {
                     headers: { 'Authorization': `Bearer ${token}` }
@@ -1477,7 +1553,9 @@
                             extension: data.extension || '',
                             objectName: data.objectName || '',
                             conversationId: data.conversationId || convId,
-                            size: data.size
+                            size: data.size,
+                            // OrganizationId retornado pelo upload
+                            organizationId: data.organizationId || ''
                         };
 
                         // Testar presigned URL com parâmetros corretos
@@ -1547,7 +1625,9 @@
                         // Dados do arquivo para outros usuários baixarem
                         fileName: fileData.fileName,
                         fileExtension: fileData.extension || '',
-                        fileSize: fileData.size || 0
+                        fileSize: fileData.size || 0,
+                        // OrganizationId do remetente
+                        fileOrganizationId: fileData.organizationId || ''
                     })
                 });
 
@@ -1575,7 +1655,9 @@
                 fileName: fileData.fileName,
                 fileExtension: fileData.extension || '',
                 fileConversationId: fileData.conversationId || currentConversation,
-                fileSize: fileData.size
+                fileSize: fileData.size,
+                // OrganizationId do remetente (extraído do JWT ou retornado pelo upload)
+                fileOrganizationId: fileData.organizationId || ''
             });
             renderMessages();
         }
