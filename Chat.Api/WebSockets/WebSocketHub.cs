@@ -360,6 +360,46 @@ public class WebSocketHub : IDisposable
                 }
             });
 
+        await _subscriber.SubscribeAsync(
+    RedisChannel.Pattern("user:*"),
+    async (channel, value) =>
+    {
+        try
+        {
+            var channelName = channel.ToString();
+            var parts = channelName.Split(':');
+            if (parts.Length != 2) return;
+
+            var targetUserId = parts[1];
+
+            // Encontrar conexões deste usuário
+            var userConnections = _connections.Values
+                .Where(c => c.UserId.ToString() == targetUserId)
+                .ToList();
+
+            if (userConnections.Count == 0)
+            {
+                _logger.LogDebug("No connections for user: {UserId}", targetUserId);
+                return;
+            }
+
+            var notification = value.ToString();
+            _logger.LogInformation("User notification: Channel={Channel} Connections={Count}",
+                channelName, userConnections.Count);
+
+            var tasks = userConnections.Select(conn =>
+                SendToClientAsync(conn, notification, CancellationToken.None));
+
+            await Task.WhenAll(tasks);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error processing user notification");
+        }
+    });
+
+        _logger.LogInformation("Redis subscription iniciada para patterns: status:*, messages:*, user:*");
+
         _logger.LogInformation("Redis subscription iniciada para patterns: status:* e messages:*");
     }
 

@@ -403,11 +403,23 @@
             color: #666;
             margin-top: 4px;
             text-align: right;
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 6px;
         }
 
         .message-status {
             display: inline-block;
             margin-left: 4px;
+        }
+
+        .message-channel {
+            font-size: 10px;
+            font-weight: 500;
+            padding: 2px 6px;
+            border-radius: 4px;
+            background: rgba(255,255,255,0.1);
         }
 
         .message-file {
@@ -446,9 +458,65 @@
 
         /* Input Area */
         .input-area {
-            padding: 16px 20px;
+            padding: 12px 20px;
             background: #111;
             border-top: 1px solid #222;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .channel-selector {
+            display: flex;
+            gap: 8px;
+        }
+
+        .channel-btn {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 12px;
+            border: 1px solid #333;
+            border-radius: 16px;
+            background: #1a1a1a;
+            color: #888;
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.2s;
+        }
+
+            .channel-btn:hover {
+                border-color: #555;
+                color: #ccc;
+            }
+
+            .channel-btn.active {
+                border-color: #4CAF50;
+                background: #1a3a1a;
+                color: #4CAF50;
+            }
+
+                .channel-btn.active[data-channel="instagram"] {
+                    border-color: #E1306C;
+                    background: #3a1a2a;
+                    color: #E1306C;
+                }
+
+                .channel-btn.active[data-channel="interno"] {
+                    border-color: #2196F3;
+                    background: #1a2a3a;
+                    color: #2196F3;
+                }
+
+        .channel-icon {
+            font-size: 14px;
+        }
+
+        .channel-label {
+            font-weight: 500;
+        }
+
+        .message-row {
             display: flex;
             gap: 12px;
             align-items: center;
@@ -820,10 +888,26 @@
                     </div>
 
                     <div class="input-area">
-                        <button class="icon-btn" onclick="document.getElementById('fileInput').click()" title="Anexar arquivo">📎</button>
-                        <input type="file" id="fileInput" style="display: none" onchange="handleFileSelect(event)">
-                        <input type="text" class="message-input" id="messageInput" placeholder="Digite uma mensagem..." onkeypress="handleInputKeypress(event)">
-                        <button class="send-btn" id="sendBtn" onclick="sendMessage()">➤</button>
+                        <div class="channel-selector">
+                            <button class="channel-btn active" data-channel="whatsapp" onclick="selectChannel('whatsapp')" title="WhatsApp">
+                                <span class="channel-icon">📱</span>
+                                <span class="channel-label">WhatsApp</span>
+                            </button>
+                            <button class="channel-btn" data-channel="instagram" onclick="selectChannel('instagram')" title="Instagram">
+                                <span class="channel-icon">📷</span>
+                                <span class="channel-label">Instagram</span>
+                            </button>
+                            <button class="channel-btn" data-channel="interno" onclick="selectChannel('interno')" title="Chat Interno">
+                                <span class="channel-icon">💬</span>
+                                <span class="channel-label">Interno</span>
+                            </button>
+                        </div>
+                        <div class="message-row">
+                            <button class="icon-btn" onclick="document.getElementById('fileInput').click()" title="Anexar arquivo">📎</button>
+                            <input type="file" id="fileInput" style="display: none" onchange="handleFileSelect(event)">
+                            <input type="text" class="message-input" id="messageInput" placeholder="Digite uma mensagem..." onkeypress="handleInputKeypress(event)">
+                            <button class="send-btn" id="sendBtn" onclick="sendMessage()">➤</button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -892,6 +976,7 @@
         let messages = new Map();
         let presenceCache = new Map();
         let selectedGroupMembers = [];
+        let selectedChannel = 'whatsapp';
         let ws = null;
         let heartbeatInterval = null;
 
@@ -1024,6 +1109,7 @@
         }
 
         function startHeartbeat() {
+            // Heartbeat a cada 30 segundos
             heartbeatInterval = setInterval(async () => {
                 try {
                     await apiPost('/presence/heartbeat', {});
@@ -1038,25 +1124,47 @@
 
             try {
                 const response = await apiPost('/presence/batch', { userIds });
-                response.presences.forEach(p => {
-                    presenceCache.set(p.userId, p);
-                });
-                updatePresenceUI();
+                if (response.presences) {
+                    response.presences.forEach(p => {
+                        presenceCache.set(p.userId, p);
+                    });
+                }
             } catch (e) {
                 console.error('Error loading presence:', e);
             }
         }
 
+        async function fetchUserPresence(userId) {
+            if (!userId) return;
+
+            try {
+                const response = await apiGet(`/presence/${userId}`);
+                if (response) {
+                    presenceCache.set(userId, {
+                        userId: userId,
+                        isOnline: response.isOnline,
+                        status: response.status,
+                        lastSeen: response.lastSeen
+                    });
+                    // Atualizar UI após buscar presença
+                    updatePresenceUI();
+                }
+            } catch (e) {
+                console.error('Error fetching user presence:', e);
+            }
+        }
+
         function updatePresenceUI() {
+            // Atualizar indicadores de presença na lista de conversas
             document.querySelectorAll('.conversation-item').forEach(item => {
                 const convId = item.dataset.conversationId;
                 const conv = conversations.find(c => c.conversationId === convId);
 
-                if (conv && conv.type === 'private') {
+                if (conv && conv.type === 'private' && conv.otherUserId) {
                     const indicator = item.querySelector('.online-indicator');
-                    if (indicator && conv.otherUserId) {
+                    if (indicator) {
                         const presence = presenceCache.get(conv.otherUserId);
-                        if (presence && presence.isOnline) {
+                        if (presence?.isOnline) {
                             indicator.classList.remove('offline-indicator');
                         } else {
                             indicator.classList.add('offline-indicator');
@@ -1064,6 +1172,21 @@
                     }
                 }
             });
+
+            // Atualizar header do chat atual se for conversa privada
+            if (currentConversation?.type === 'private' && currentConversation?.otherUserId) {
+                const presence = presenceCache.get(currentConversation.otherUserId);
+                const statusEl = document.getElementById('chatStatus');
+                if (statusEl) {
+                    if (presence?.isOnline) {
+                        statusEl.textContent = 'Online';
+                        statusEl.classList.remove('offline');
+                    } else {
+                        statusEl.textContent = 'Offline';
+                        statusEl.classList.add('offline');
+                    }
+                }
+            }
         }
 
         // ========== CONVERSATIONS ==========
@@ -1071,13 +1194,28 @@
             try {
                 const response = await apiGet('/conversations');
                 conversations = response.conversations || [];
-                renderConversations();
 
-                // Load presence for private conversation users
+                // Load presence for private conversation users BEFORE rendering
                 const userIds = conversations
                     .filter(c => c.type === 'private' && c.otherUserId)
                     .map(c => c.otherUserId);
-                loadPresence(userIds);
+
+                if (userIds.length > 0) {
+                    await loadPresence(userIds);
+                }
+
+                // Render AFTER loading presence
+                renderConversations();
+
+                // Subscribe to all conversations via WebSocket
+                if (ws && ws.readyState === WebSocket.OPEN) {
+                    for (const conv of conversations) {
+                        ws.send(JSON.stringify({
+                            type: 'subscribe',
+                            conversationId: conv.conversationId
+                        }));
+                    }
+                }
 
             } catch (error) {
                 console.error('Error loading conversations:', error);
@@ -1100,13 +1238,20 @@
                 const preview = conv.lastMessage?.preview || '';
                 const unread = conv.unreadCount || 0;
 
+                // Verificar presença ao renderizar
+                let isOnline = false;
+                if (!isGroup && conv.otherUserId) {
+                    const presence = presenceCache.get(conv.otherUserId);
+                    isOnline = presence?.isOnline || false;
+                }
+
                 return `
                         <div class="conversation-item ${isActive ? 'active' : ''}"
                              data-conversation-id="${conv.conversationId}"
                              onclick="selectConversation('${conv.conversationId}')">
                             <div class="conversation-avatar ${isGroup ? 'group' : ''}">
                                 ${initials}
-                                ${!isGroup ? '<div class="online-indicator offline-indicator"></div>' : ''}
+                                ${!isGroup ? `<div class="online-indicator ${isOnline ? '' : 'offline-indicator'}"></div>` : ''}
                             </div>
                             <div class="conversation-info">
                                 <div class="conversation-name">
@@ -1137,6 +1282,12 @@
 
             currentConversation = conv;
 
+            // Zerar contador de não lidas
+            if (conv.unreadCount > 0) {
+                conv.unreadCount = 0;
+                renderConversations(); // Re-renderizar para remover bolinha
+            }
+
             // Update UI
             document.getElementById('emptyState').style.display = 'none';
             document.getElementById('chatContent').style.display = 'flex';
@@ -1146,12 +1297,19 @@
             document.getElementById('chatName').textContent = conv.name || 'Conversa';
 
             // Load presence for private chat
-            if (conv.type === 'private' && conv.otherUserId) {
-                const presence = presenceCache.get(conv.otherUserId);
+            if (conv.type === 'private') {
                 const statusEl = document.getElementById('chatStatus');
-                if (presence?.isOnline) {
-                    statusEl.textContent = 'Online';
-                    statusEl.classList.remove('offline');
+                if (conv.otherUserId) {
+                    // Buscar presença atualizada do usuário
+                    await fetchUserPresence(conv.otherUserId);
+                    const presence = presenceCache.get(conv.otherUserId);
+                    if (presence?.isOnline) {
+                        statusEl.textContent = 'Online';
+                        statusEl.classList.remove('offline');
+                    } else {
+                        statusEl.textContent = 'Offline';
+                        statusEl.classList.add('offline');
+                    }
                 } else {
                     statusEl.textContent = 'Offline';
                     statusEl.classList.add('offline');
@@ -1196,12 +1354,33 @@
                         senderId: m.senderId,
                         senderName: m.senderName || 'Usuário',
                         content: m.content || '',
-                        createdAt: m.createdAt
+                        channel: m.channel,
+                        createdAt: m.createdAt,
+                        // Campos de arquivo
+                        fileId: m.fileId,
+                        fileName: m.fileName,
+                        fileSize: m.fileSize,
+                        fileExtension: m.fileExtension,
+                        fileOrganizationId: m.fileOrganizationId
                     }));
+
+                    // Mesclar mensagens da API com mensagens locais (WebSocket)
+                    const localMsgs = messages.get(conversationId) || [];
+                    const allMsgIds = new Set(apiMessages.map(m => m.messageId));
+
+                    // Adicionar mensagens locais que não vieram da API (recentes via WebSocket)
+                    for (const localMsg of localMsgs) {
+                        if (!allMsgIds.has(localMsg.messageId)) {
+                            apiMessages.push(localMsg);
+                        }
+                    }
+
+                    // Ordenar por data
+                    apiMessages.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
 
                     messages.set(conversationId, apiMessages);
                 } else {
-                    // Se não encontrou mensagens, inicializa vazio
+                    // Se não encontrou mensagens, mantém locais ou inicializa vazio
                     if (!messages.has(conversationId)) {
                         messages.set(conversationId, []);
                     }
@@ -1230,8 +1409,20 @@
                 const isSent = msg.senderId === currentUser?.userId;
                 const time = formatTime(msg.createdAt);
 
+                // Ícone e nome do canal
+                const channelInfo = {
+                    'whatsapp': { icon: '📱', name: 'WhatsApp', color: '#25D366' },
+                    'instagram': { icon: '📷', name: 'Instagram', color: '#E1306C' },
+                    'interno': { icon: '💬', name: 'Interno', color: '#2196F3' }
+                };
+                const channel = channelInfo[msg.channel] || channelInfo['interno'];
+                const channelHtml = msg.channel ? `<span class="message-channel" style="color: ${channel.color}">${channel.icon} ${channel.name}</span>` : '';
+
                 let fileHtml = '';
                 if (msg.fileId) {
+                    const ext = msg.fileExtension || '';
+                    const orgId = msg.fileOrganizationId || '';
+                    const convId = msg.conversationId || currentConversation?.conversationId || '';
                     fileHtml = `
                             <div class="message-file">
                                 <span class="file-icon">📄</span>
@@ -1239,7 +1430,7 @@
                                     <div class="file-name">${msg.fileName || 'Arquivo'}</div>
                                     <div class="file-size">${formatFileSize(msg.fileSize)}</div>
                                 </div>
-                                <a href="#" class="file-download" onclick="downloadFile('${msg.fileId}', '${msg.fileOrganizationId}')">Baixar</a>
+                                <a href="#" class="file-download" onclick="event.preventDefault(); downloadFile('${msg.fileId}', '${orgId}', '${convId}', '${ext}')">Baixar</a>
                             </div>
                         `;
                 }
@@ -1250,7 +1441,7 @@
                             ${msg.content ? `<div>${msg.content}</div>` : ''}
                             ${fileHtml}
                             <div class="message-time">
-                                ${time}
+                                ${channelHtml} ${time}
                                 ${isSent ? '<span class="message-status">✓✓</span>' : ''}
                             </div>
                         </div>
@@ -1268,6 +1459,24 @@
             }
         }
 
+        function selectChannel(channel) {
+            selectedChannel = channel;
+
+            // Atualizar visual dos botões
+            document.querySelectorAll('.channel-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            document.querySelector(`.channel-btn[data-channel="${channel}"]`).classList.add('active');
+
+            // Atualizar placeholder do input
+            const placeholders = {
+                'whatsapp': 'Enviar via WhatsApp...',
+                'instagram': 'Enviar via Instagram...',
+                'interno': 'Enviar mensagem interna...'
+            };
+            document.getElementById('messageInput').placeholder = placeholders[channel] || 'Digite uma mensagem...';
+        }
+
         async function sendMessage() {
             const input = document.getElementById('messageInput');
             const content = input.value.trim();
@@ -1283,7 +1492,7 @@
             const now = new Date().toISOString();
             const conversationId = currentConversation.conversationId;
 
-            console.log('Sending message to conversation:', conversationId);
+            console.log('Sending message via', selectedChannel, 'to conversation:', conversationId);
 
             // Add to local messages immediately (optimistic update)
             const newMessage = {
@@ -1292,6 +1501,7 @@
                 senderId: currentUser.userId,
                 senderName: currentUser.displayName,
                 content,
+                channel: selectedChannel,
                 createdAt: now
             };
 
@@ -1311,7 +1521,8 @@
                         'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({
-                        content: content
+                        content: content,
+                        channel: selectedChannel
                     })
                 });
 
@@ -1346,12 +1557,147 @@
             }
         }
 
-        function handleFileSelect(event) {
+        async function handleFileSelect(event) {
             const file = event.target.files[0];
             if (!file) return;
 
-            showToast(`Arquivo selecionado: ${file.name}`, 'success');
-            // File upload would be implemented here
+            if (!currentConversation) {
+                showToast('Selecione uma conversa primeiro', 'error');
+                return;
+            }
+
+            // Limite de 2GB
+            const maxSize = 2 * 1024 * 1024 * 1024;
+            if (file.size > maxSize) {
+                showToast('Arquivo muito grande. Máximo: 2GB', 'error');
+                return;
+            }
+
+            showToast(`Enviando: ${file.name}...`, 'success');
+
+            try {
+                // Upload para MinIO via API
+                const formData = new FormData();
+                formData.append('file', file);
+                formData.append('conversationId', currentConversation.conversationId);
+
+                const response = await fetch(`${API_BASE}/files/upload`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: formData
+                });
+
+                if (!response.ok) {
+                    throw new Error('Upload failed');
+                }
+
+                const uploadResult = await response.json();
+                console.log('File uploaded:', uploadResult);
+
+                // Enviar mensagem com o arquivo
+                await sendFileMessage(uploadResult);
+
+                showToast(`Arquivo enviado: ${file.name}`, 'success');
+            } catch (error) {
+                console.error('Upload error:', error);
+                showToast('Erro ao enviar arquivo', 'error');
+            }
+
+            // Limpar input
+            event.target.value = '';
+        }
+
+        async function sendFileMessage(fileData) {
+            if (!currentConversation) return;
+
+            const conversationId = currentConversation.conversationId;
+            const messageId = 'temp-' + Date.now();
+            const now = new Date().toISOString();
+
+            // Adicionar mensagem localmente (optimistic)
+            const convMessages = messages.get(conversationId) || [];
+            const newMessage = {
+                messageId,
+                conversationId,
+                senderId: currentUser.userId,
+                senderName: currentUser.displayName || 'Você',
+                content: `📎 ${fileData.fileName}`,
+                fileId: fileData.fileId,
+                fileName: fileData.fileName,
+                fileSize: fileData.size,
+                fileExtension: fileData.extension,
+                fileOrganizationId: fileData.organizationId,
+                createdAt: now
+            };
+            convMessages.push(newMessage);
+            messages.set(conversationId, convMessages);
+            renderMessages(conversationId);
+
+            // Enviar via API
+            try {
+                const response = await fetch(`${API_BASE}/conversations/${conversationId}/messages`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        content: `📎 ${fileData.fileName}`,
+                        fileId: fileData.fileId,
+                        fileName: fileData.fileName,
+                        fileSize: fileData.size,
+                        fileExtension: fileData.extension,
+                        fileOrganizationId: fileData.organizationId
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error('Failed to send file message');
+                }
+            } catch (error) {
+                console.error('Error sending file message:', error);
+                showToast('Erro ao enviar mensagem do arquivo', 'error');
+            }
+        }
+
+        async function downloadFile(fileId, organizationId, conversationId, extension) {
+            try {
+                showToast('Gerando link de download...', 'success');
+
+                // Usar conversationId atual se não fornecido
+                const convId = conversationId || currentConversation?.conversationId;
+
+                const response = await fetch(
+                    `${API_BASE}/files/${fileId}/download-url?conversationId=${convId}&extension=${extension}&organizationId=${organizationId}`,
+                    {
+                        headers: {
+                            'Authorization': `Bearer ${token}`
+                        }
+                    }
+                );
+
+                if (!response.ok) {
+                    throw new Error('Failed to get download URL');
+                }
+
+                const data = await response.json();
+
+                // Abrir URL em nova aba
+                window.open(data.downloadUrl, '_blank');
+            } catch (error) {
+                console.error('Download error:', error);
+                showToast('Erro ao baixar arquivo', 'error');
+            }
+        }
+
+        function formatFileSize(bytes) {
+            if (!bytes) return '';
+            if (bytes < 1024) return bytes + ' B';
+            if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+            if (bytes < 1024 * 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+            return (bytes / (1024 * 1024 * 1024)).toFixed(2) + ' GB';
         }
 
         // ========== WEBSOCKET ==========
@@ -1417,6 +1763,52 @@
                 case 'presence.change':
                     handlePresenceChange(data);
                     break;
+                case 'conversation.created':
+                    handleNewConversation(data);
+                    break;
+            }
+        }
+
+        function handleNewConversation(data) {
+            console.log('New conversation received:', data);
+
+            // Verificar se já existe
+            const exists = conversations.some(c => c.conversationId === data.conversationId);
+            if (exists) {
+                console.log('Conversation already exists, skipping');
+                return;
+            }
+
+            // Criar objeto de conversa
+            const newConv = {
+                conversationId: data.conversationId,
+                type: data.conversationType || 'private',
+                name: data.otherUser?.displayName || data.name || 'Conversa',
+                avatarUrl: data.otherUser?.avatarUrl,
+                otherUserId: data.otherUser?.userId,
+                lastMessage: {
+                    preview: 'Conversa iniciada',
+                    sender: '',
+                    at: new Date().toISOString()
+                },
+                unreadCount: 0
+            };
+
+            // Adicionar à lista
+            conversations.unshift(newConv);
+            renderConversations();
+
+            // Se inscrever na conversa via WebSocket
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({
+                    type: 'subscribe',
+                    conversationId: data.conversationId
+                }));
+            }
+
+            // Mostrar notificação apenas se NÃO foi o próprio usuário que criou
+            if (data.createdBy !== currentUser?.userId) {
+                showToast(`Nova conversa com ${newConv.name}`, 'success');
             }
         }
 
@@ -1429,11 +1821,21 @@
                 return;
             }
 
+            // Verificar se a conversa existe, senão recarregar lista
+            const convExists = conversations.some(c => c.conversationId === convId);
+            if (!convExists) {
+                console.log('Conversation not found locally, reloading list');
+                loadConversations();
+            }
+
             // Don't duplicate messages
             const convMessages = messages.get(convId) || [];
             if (convMessages.some(m => m.messageId === data.messageId)) {
+                console.log('Message already exists, skipping');
                 return;
             }
+
+            console.log('Adding new message to conversation:', convId, data.messageId);
 
             convMessages.push({
                 messageId: data.messageId,
@@ -1444,6 +1846,7 @@
                 fileId: data.fileId,
                 fileName: data.fileName,
                 fileSize: data.fileSize,
+                fileExtension: data.fileExtension,
                 fileOrganizationId: data.fileOrganizationId,
                 createdAt: data.createdAt
             });
@@ -1455,8 +1858,8 @@
                 renderMessages(convId);
             }
 
-            // Update conversation list
-            loadConversations();
+            // Update conversation preview in sidebar
+            updateConversationPreview(convId, data.content, data.senderName);
 
             // Show notification if not current conversation
             if (currentConversation?.conversationId !== convId) {
@@ -1482,6 +1885,32 @@
                     statusEl.textContent = 'Offline';
                     statusEl.classList.add('offline');
                 }
+            }
+        }
+
+        function updateConversationPreview(conversationId, content, senderName) {
+            // Atualizar o preview na lista local
+            const conv = conversations.find(c => c.conversationId === conversationId);
+            if (conv) {
+                conv.lastMessage = {
+                    preview: content.length > 30 ? content.substring(0, 27) + '...' : content,
+                    sender: senderName,
+                    at: new Date().toISOString()
+                };
+
+                // Só incrementar unread se NÃO é a conversa atual
+                if (currentConversation?.conversationId !== conversationId) {
+                    conv.unreadCount = (conv.unreadCount || 0) + 1;
+                }
+
+                // Mover conversa para o topo
+                const idx = conversations.indexOf(conv);
+                if (idx > 0) {
+                    conversations.splice(idx, 1);
+                    conversations.unshift(conv);
+                }
+
+                renderConversations();
             }
         }
 
@@ -1577,14 +2006,17 @@
 
                 closeModal('newConversationModal');
 
-                // Add to conversations if new
+                // Add to conversations if new and not already in list
                 if (response.isNew) {
-                    conversations.unshift({
-                        conversationId: response.conversationId,
-                        type: 'private',
-                        name: displayName || username,
-                        otherUserId: userId
-                    });
+                    const alreadyExists = conversations.some(c => c.conversationId === response.conversationId);
+                    if (!alreadyExists) {
+                        conversations.unshift({
+                            conversationId: response.conversationId,
+                            type: 'private',
+                            name: displayName || username,
+                            otherUserId: userId
+                        });
+                    }
                 }
 
                 renderConversations();
@@ -1644,11 +2076,15 @@
 
                 closeModal('newGroupModal');
 
-                conversations.unshift({
-                    conversationId: response.conversationId,
-                    type: 'group',
-                    name: name
-                });
+                // Add to conversations if not already in list
+                const alreadyExists = conversations.some(c => c.conversationId === response.conversationId);
+                if (!alreadyExists) {
+                    conversations.unshift({
+                        conversationId: response.conversationId,
+                        type: 'group',
+                        name: name
+                    });
+                }
 
                 renderConversations();
                 selectConversation(response.conversationId);
@@ -1670,13 +2106,6 @@
                 return date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
             }
             return date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
-        }
-
-        function formatFileSize(bytes) {
-            if (!bytes) return '';
-            if (bytes < 1024) return bytes + ' B';
-            if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
-            return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
         }
 
         function showError(elementId, message) {
@@ -1727,10 +2156,6 @@
             }
 
             return response.json();
-        }
-
-        async function downloadFile(fileId, orgId) {
-            window.open(`${API_BASE.replace('/api/v1', '')}/api/files/${fileId}?organizationId=${orgId}`, '_blank');
         }
     </script>
 </body>

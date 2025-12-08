@@ -5,6 +5,7 @@ using System.Text;
 using Chat.Frontend.Services;
 using Chat.Frontend.WebSockets;
 using StackExchange.Redis;
+using Prometheus;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -145,7 +146,7 @@ builder.Services.AddSingleton<IConnectionMultiplexer>(sp =>
 });
 
 // ============================================
-// Redis Cache (para idempotência)
+// Redis Cache (para idempotencia)
 // ============================================
 builder.Services.AddStackExchangeRedisCache(options =>
 {
@@ -167,7 +168,7 @@ builder.Services.AddStackExchangeRedisCache(options =>
 builder.Services.AddSingleton<IdempotencyService>();
 
 // ============================================
-// CORS (se necessário para frontend web)
+// CORS (se necessario para frontend web)
 // ============================================
 builder.Services.AddCors(options =>
 {
@@ -192,6 +193,12 @@ if (app.Environment.IsDevelopment())
 
 app.UseCors();
 
+// ===== Prometheus Metrics =====
+app.UseHttpMetrics(options =>
+{
+    options.AddCustomLabel("service", context => "chat-frontend");
+});
+
 // ===== WebSocket DEVE vir ANTES de Authentication =====
 app.UseWebSockets(new WebSocketOptions
 {
@@ -201,10 +208,15 @@ app.UseWebSockets(new WebSocketOptions
 app.UseAuthentication();
 app.UseAuthorization();
 
-// ===== WebSocket Proxy Middleware (após Authentication) =====
+// ===== WebSocket Proxy Middleware (apos Authentication) =====
 app.UseWebSocketProxy();
 
 app.MapControllers();
+
+// ============================================
+// Prometheus Metrics Endpoint
+// ============================================
+app.MapMetrics();
 
 // ============================================
 // Health Check Endpoint
@@ -229,7 +241,8 @@ app.MapGet("/", () => Results.Ok(new
         "POST /api/v1/messages - Send message",
         "GET  /api/v1/messages/{conversationId} - Get conversation (TODO)",
         "WS   /ws/status?access_token={JWT} - WebSocket status notifications",
-        "GET  /health - Health check"
+        "GET  /health - Health check",
+        "GET  /metrics - Prometheus metrics"
     }
 }))
 .AllowAnonymous();
@@ -247,6 +260,7 @@ logger.LogInformation("Chat.Frontend starting...");
 logger.LogInformation("Environment: {Env}", app.Environment.EnvironmentName);
 logger.LogInformation("Chat.Api Backend: {ChatApiUrl}", chatApiUrl);
 logger.LogInformation("WebSocket Proxy: /ws/status -> {ChatApiUrl}/ws/status", chatApiUrl);
+logger.LogInformation("Prometheus Metrics: /metrics");
 logger.LogInformation("===========================================");
 
 app.Run();

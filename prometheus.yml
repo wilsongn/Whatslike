@@ -1,68 +1,32 @@
 # prometheus.yml
-# Configuração do Prometheus para monitoramento do Chat4All
-
 global:
   scrape_interval: 15s
   evaluation_interval: 15s
-  external_labels:
-    cluster: 'chat4all'
-    environment: 'production'
-
-# Alertmanager (opcional)
-# alerting:
-#   alertmanagers:
-#     - static_configs:
-#         - targets: ['alertmanager:9093']
-
-# Regras de alerta (opcional)
-# rule_files:
-#   - 'alerts.yml'
 
 scrape_configs:
-  # Chat.Api
-  - job_name: 'chat-api'
+  # Prometheus self-monitoring
+  - job_name: 'prometheus'
     static_configs:
-      - targets: ['chat-api:5000']
-    metrics_path: '/metrics'
-    
-  # Chat.Frontend
+      - targets: ['localhost:9090']
+
+  # Chat Frontend (.NET)
   - job_name: 'chat-frontend'
     static_configs:
       - targets: ['chat-frontend:8080']
     metrics_path: '/metrics'
 
-  # Kafka Exporter
+  # Chat API (.NET) - adicionar depois de configurar prometheus-net
+  # - job_name: 'chat-api'
+  #   static_configs:
+  #     - targets: ['chat-api:5000']
+  #   metrics_path: '/metrics'
+
+  # Redis via redis-exporter
+  - job_name: 'redis'
+    static_configs:
+      - targets: ['redis-exporter:9121']
+
+  # Kafka via kafka-exporter
   - job_name: 'kafka'
     static_configs:
-      - targets: ['kafka:9092']
-    
-  # Cassandra (via JMX Exporter - requer configuração adicional)
-  # - job_name: 'cassandra'
-  #   static_configs:
-  #     - targets: ['cassandra:7070']
-
-  # Redis Exporter (requer redis_exporter adicional)
-  # - job_name: 'redis'
-  #   static_configs:
-  #     - targets: ['redis-exporter:9121']
-
-  # MinIO
-  - job_name: 'minio'
-    metrics_path: /minio/v2/metrics/cluster
-    static_configs:
-      - targets: ['minio:9000']
-
-  # cAdvisor para métricas de containers
-  - job_name: 'cadvisor'
-    static_configs:
-      - targets: ['cadvisor:8080']
-    
-  # Node Exporter para métricas do host
-  - job_name: 'node'
-    static_configs:
-      - targets: ['node-exporter:9100']
-
-  # Prometheus self-monitoring
-  - job_name: 'prometheus'
-    static_configs:
-      - targets: ['localhost:9090']
+      - targets: ['kafka-exporter:9308']

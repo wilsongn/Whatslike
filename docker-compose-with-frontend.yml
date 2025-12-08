@@ -11,11 +11,15 @@ services:
       - MAX_HEAP_SIZE=1G
     ports:
       - "9042:9042"
+    volumes:
+      - cassandra_data:/var/lib/cassandra
     healthcheck:
-      test: ["CMD-SHELL","cqlsh -e \"SELECT cluster_name FROM system.local;\" || exit 1"]
+      test: ["CMD-SHELL", "cqlsh -e 'SELECT now() FROM system.local;' || exit 1"]
       interval: 15s
       timeout: 10s
-      retries: 20
+      retries: 30
+      start_period: 60s
+    restart: unless-stopped
     networks:
       - chatnet
 
@@ -24,11 +28,15 @@ services:
     container_name: redis
     ports:
       - "6379:6379"
+    volumes:
+      - redis_data:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 3s
       retries: 10
+      start_period: 10s
+    restart: unless-stopped
     networks:
       - chatnet
 
@@ -38,14 +46,16 @@ services:
     environment:
       ZOOKEEPER_CLIENT_PORT: 2181
       ZOOKEEPER_TICK_TIME: 2000
-      ZOOKEEPER_4LW_COMMANDS_WHITELIST: "ruok,stat,conf,mntr"
+      ZOOKEEPER_4LW_COMMANDS_WHITELIST: "ruok,stat,conf,mntr,srvr"
     ports:
       - "2181:2181"
     healthcheck:
-      test: ["CMD-SHELL","echo 'ls /' | zookeeper-shell localhost:2181 | grep -E '^\\[.*\\]$' >/dev/null 2>&1 || exit 1"]
+      test: ["CMD-SHELL", "echo srvr | nc localhost 2181 | grep Mode || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 30
+      start_period: 30s
+    restart: unless-stopped
     networks:
       - chatnet
 
@@ -64,16 +74,18 @@ services:
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
     ports:
       - "9092:9092"
-    networks:
-      - chatnet
     healthcheck:
-      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "kafka:9092"]
+      test: ["CMD-SHELL", "kafka-broker-api-versions --bootstrap-server localhost:9092 || exit 1"]
       interval: 10s
       timeout: 10s
-      retries: 5
-      start_period: 40s
+      retries: 30
+      start_period: 60s
+    restart: unless-stopped
+    networks:
+      - chatnet
 
   minio:
     image: minio/minio:latest
@@ -91,7 +103,9 @@ services:
       test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
       interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 10
+      start_period: 20s
+    restart: unless-stopped
     networks:
       - chatnet
 
@@ -103,6 +117,7 @@ services:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml
     ports:
       - "9090:9090"
+    restart: unless-stopped
     networks:
       - chatnet
 
@@ -117,10 +132,37 @@ services:
       - prometheus
     volumes:
       - grafana-data:/var/lib/grafana
+    restart: unless-stopped
     networks:
       - chatnet
 
-  # ===== Aplicação =====
+  # ===== Exporters para Monitoramento =====
+  redis-exporter:
+    image: oliver006/redis_exporter:latest
+    container_name: redis-exporter
+    environment:
+      - REDIS_ADDR=redis:6379
+    ports:
+      - "9121:9121"
+    depends_on:
+      - redis
+    restart: unless-stopped
+    networks:
+      - chatnet
+
+  kafka-exporter:
+    image: danielqsj/kafka-exporter:latest
+    container_name: kafka-exporter
+    command: --kafka.server=kafka:9092
+    ports:
+      - "9308:9308"
+    depends_on:
+      - kafka
+    restart: unless-stopped
+    networks:
+      - chatnet
+
+  # ===== Aplicacao =====
   chat-api:
     build:
       context: .
@@ -132,12 +174,13 @@ services:
       - Jwt__Issuer=Whatslike
       - Jwt__Audience=Whatslike.Clients
       - Jwt__DisableLifetimeValidation=true
-      - Cassandra__ContactPoints__0=cassandra    # Com __0!
+      - Cassandra__ContactPoints__0=cassandra
       - Cassandra__Keyspace=chat
       - Kafka__BootstrapServers=kafka:9092
       - KAFKA_BOOTSTRAP=kafka:9092
       - REDIS_URL=redis:6379
       - Minio__Endpoint=minio:9000
+      - Minio__PublicEndpoint=localhost:9000
       - Minio__AccessKey=minioadmin
       - Minio__SecretKey=minioadmin
       - Minio__UseSSL=false
@@ -154,6 +197,7 @@ services:
         condition: service_healthy
       minio:
         condition: service_healthy
+    restart: on-failure:5
     networks:
       - chatnet
 
@@ -179,6 +223,7 @@ services:
         condition: service_healthy
       chat-api:
         condition: service_started
+    restart: on-failure:5
     networks:
       - chatnet
 
@@ -188,7 +233,7 @@ services:
       dockerfile: Chat.RouterWorker/Dockerfile
     container_name: router-worker
     environment:
-      - Cassandra__ContactPoints__0=cassandra    # Com __0!
+      - Cassandra__ContactPoints__0=cassandra
       - Cassandra__Keyspace=chat
       - Kafka__BootstrapServers=kafka:9092
       - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
@@ -202,6 +247,7 @@ services:
         condition: service_healthy
       kafka:
         condition: service_healthy
+    restart: on-failure:10
     networks:
       - chatnet
 
@@ -211,7 +257,7 @@ services:
       dockerfile: Chat.StatusWorker/Dockerfile
     container_name: status-worker
     environment:
-      - Cassandra__ContactPoints__0=cassandra    # Com __0!
+      - Cassandra__ContactPoints__0=cassandra
       - Cassandra__Keyspace=chat
       - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
       - KAFKA_BOOTSTRAP=kafka:9092
@@ -225,6 +271,7 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    restart: on-failure:10
     networks:
       - chatnet
 
@@ -247,6 +294,7 @@ services:
     depends_on:
       kafka:
         condition: service_healthy
+    restart: on-failure:10
     networks:
       - chatnet
 
@@ -269,6 +317,7 @@ services:
     depends_on:
       kafka:
         condition: service_healthy
+    restart: on-failure:10
     networks:
       - chatnet
 
@@ -277,5 +326,7 @@ networks:
     driver: bridge
 
 volumes:
+  cassandra_data:
+  redis_data:
   minio_data:
   grafana-data:
